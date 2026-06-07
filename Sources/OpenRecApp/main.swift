@@ -1,4 +1,0 @@
-import OpenRecCore
-
-print("OpenRec")
-

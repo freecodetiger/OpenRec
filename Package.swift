@@ -28,7 +28,10 @@ let package = Package(
         .testTarget(
             name: "OpenRecCoreTests",
             dependencies: ["OpenRecCore"]
+        ),
+        .testTarget(
+            name: "OpenRecAppTests",
+            dependencies: ["OpenRecApp"]
         )
     ]
 )
-
