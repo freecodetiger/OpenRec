@@ -28,7 +28,6 @@ struct MenuBarPopoverView: View {
             .disabled(!viewModel.canStartRecording && !viewModel.isRecording)
 
             quickActions
-            mockScenarioControls
         }
         .padding(16)
         .frame(width: 340)
@@ -112,23 +111,6 @@ struct MenuBarPopoverView: View {
             }
         }
         .buttonStyle(.borderless)
-    }
-
-    private var mockScenarioControls: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Mock State")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            HStack(spacing: 8) {
-                ForEach(AppShellSnapshot.mockScenarios, id: \.status) { scenario in
-                    Button(scenario.status.shortTitle) {
-                        viewModel.selectScenario(scenario)
-                    }
-                    .controlSize(.small)
-                }
-            }
-        }
     }
 }
 

@@ -8,7 +8,7 @@ struct SaveFlowView: View {
             Label("Save Recording", systemImage: "square.and.arrow.down")
                 .font(.title2.weight(.semibold))
 
-            Text("This boundary will present NSSavePanel after Core finalizes a temporary recording.")
+            Text("Choose where to save the finished recording.")
                 .foregroundStyle(.secondary)
 
             LabeledContent("Status", value: snapshot.status.title)

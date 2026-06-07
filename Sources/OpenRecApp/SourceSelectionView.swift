@@ -9,7 +9,7 @@ struct SourceSelectionView: View {
             Label("Source Selection", systemImage: "rectangle.dashed")
                 .font(.title2.weight(.semibold))
 
-            Text("This boundary will host display selection and the transparent window picker overlay.")
+            Text("Choose the display or window OpenRec should record.")
                 .foregroundStyle(.secondary)
 
             Picker("Mode", selection: .constant(snapshot.mode)) {

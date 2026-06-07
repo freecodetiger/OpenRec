@@ -106,7 +106,7 @@ extension AppShellSnapshot {
         id: "studio-mic",
         deviceID: "studio-mic",
         title: "Studio Microphone",
-        subtitle: "Mock input device"
+        subtitle: "External input device"
     )
 
     static let ready = AppShellSnapshot(
