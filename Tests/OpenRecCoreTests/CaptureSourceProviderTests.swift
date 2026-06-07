@@ -17,6 +17,7 @@ import Testing
             title: "Document",
             owningApplicationName: "Editor",
             pixelSize: CGSize(width: 1440, height: 900),
+            screenFrame: CGRect(x: 40, y: 80, width: 720, height: 450),
             isAvailable: true
         )
     ]
@@ -112,5 +113,20 @@ import Testing
     #expect(window.source == .window(WindowID(rawValue: 99)))
     #expect(window.pixelSize.width == 1280)
     #expect(window.pixelSize.height == 720)
+    #expect(window.screenFrame == nil)
     #expect(!window.isAvailable)
+}
+
+@Test func windowMetadataCanStoreScreenFrameForOverlaySelection() {
+    let screenFrame = CGRect(x: 120, y: 240, width: 960, height: 540)
+    let window = WindowSourceMetadata(
+        id: WindowID(rawValue: 7),
+        title: "Canvas",
+        owningApplicationName: "Design",
+        pixelSize: CGSize(width: 1920, height: 1080),
+        screenFrame: screenFrame,
+        isAvailable: true
+    )
+
+    #expect(window.screenFrame == screenFrame)
 }

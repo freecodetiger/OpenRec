@@ -41,12 +41,17 @@ import AVFoundation
     #expect(notDetermined.status(for: .microphone) == .notDetermined)
 }
 
-@Test func systemPermissionProviderUsesConservativeStatusesForUnsupportedSystemPermissions() {
-    let provider = SystemPermissionStatusProvider(microphoneAuthorizationStatus: { .authorized })
+@Test func systemPermissionProviderUsesInjectedSystemPermissionLookups() {
+    let provider = SystemPermissionStatusProvider(
+        microphoneAuthorizationStatus: { .authorized },
+        screenRecordingStatus: { .denied },
+        accessibilityStatus: { .granted },
+        inputMonitoringStatus: { .denied }
+    )
 
-    #expect(provider.status(for: .screenRecording) == .unknown)
-    #expect(provider.status(for: .accessibility) == .notDetermined)
-    #expect(provider.status(for: .inputMonitoring) == .notDetermined)
+    #expect(provider.status(for: .screenRecording) == .denied)
+    #expect(provider.status(for: .accessibility) == .granted)
+    #expect(provider.status(for: .inputMonitoring) == .denied)
 }
 
 @Test func systemPermissionProviderAllowsInjectingNonMicrophoneStatusLookups() {

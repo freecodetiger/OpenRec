@@ -125,3 +125,42 @@ import Testing
     #expect(overlay.highlightedTargetID == nil)
     #expect(selectedTargetID == nil)
 }
+
+@MainActor
+@Test func windowSelectionOverlayUsesScreenFrameWhenAvailable() {
+    let target = SourceTargetOption(
+        id: "window-99",
+        mode: .window,
+        source: .window(WindowID(rawValue: 99)),
+        title: "Editor - Draft",
+        subtitle: "Window recording target",
+        screenFrame: CGRect(x: 100, y: 200, width: 600, height: 400)
+    )
+    let overlay = WindowSelectionOverlayModel(targets: [target])
+
+    let frame = overlay.frame(
+        for: target,
+        index: 0,
+        in: CGSize(width: 1440, height: 900),
+        overlayScreenFrame: CGRect(x: 0, y: 0, width: 1440, height: 900)
+    )
+
+    #expect(frame == CGRect(x: 100, y: 200, width: 600, height: 400))
+}
+
+@MainActor
+@Test func windowSelectionOverlayFallsBackToGridWhenScreenFrameIsMissing() {
+    let target = AppShellSnapshot.windowTarget
+    let overlay = WindowSelectionOverlayModel(targets: [target])
+
+    let frame = overlay.frame(
+        for: target,
+        index: 0,
+        in: CGSize(width: 1200, height: 800),
+        overlayScreenFrame: CGRect(x: 0, y: 0, width: 1200, height: 800)
+    )
+
+    #expect(frame.width > 0)
+    #expect(frame.height > 0)
+    #expect(frame != .zero)
+}

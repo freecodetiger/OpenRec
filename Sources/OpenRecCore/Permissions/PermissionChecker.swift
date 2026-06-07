@@ -1,5 +1,7 @@
 #if os(macOS)
+import ApplicationServices
 import AVFoundation
+import CoreGraphics
 #endif
 
 public enum PermissionStatus: String, Codable, Equatable, Sendable {
@@ -63,9 +65,15 @@ public struct SystemPermissionStatusProvider: PermissionStatusProvider {
         microphoneAuthorizationStatus: @escaping @Sendable () -> AVAuthorizationStatus = {
             AVCaptureDevice.authorizationStatus(for: .audio)
         },
-        screenRecordingStatus: @escaping @Sendable () -> PermissionStatus = { .unknown },
-        accessibilityStatus: @escaping @Sendable () -> PermissionStatus = { .notDetermined },
-        inputMonitoringStatus: @escaping @Sendable () -> PermissionStatus = { .notDetermined }
+        screenRecordingStatus: @escaping @Sendable () -> PermissionStatus = {
+            CGPreflightScreenCaptureAccess() ? .granted : .denied
+        },
+        accessibilityStatus: @escaping @Sendable () -> PermissionStatus = {
+            AXIsProcessTrusted() ? .granted : .denied
+        },
+        inputMonitoringStatus: @escaping @Sendable () -> PermissionStatus = {
+            CGPreflightListenEventAccess() ? .granted : .denied
+        }
     ) {
         self.microphoneAuthorizationStatus = microphoneAuthorizationStatus
         self.screenRecordingStatus = screenRecordingStatus

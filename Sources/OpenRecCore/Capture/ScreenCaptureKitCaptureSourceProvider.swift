@@ -35,6 +35,7 @@ public struct ScreenCaptureKitCaptureSourceProvider: CaptureSourceProvider {
                 title: window.title ?? "",
                 owningApplicationName: window.owningApplication?.applicationName,
                 pixelSize: pixelSize,
+                screenFrame: window.frame,
                 isAvailable: true
             )
         }

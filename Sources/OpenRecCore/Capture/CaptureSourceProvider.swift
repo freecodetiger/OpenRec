@@ -36,6 +36,7 @@ public struct WindowSourceMetadata: Equatable, Sendable {
     public var title: String
     public var owningApplicationName: String?
     public var pixelSize: CGSize
+    public var screenFrame: CGRect?
     public var isAvailable: Bool
 
     public init(
@@ -43,12 +44,14 @@ public struct WindowSourceMetadata: Equatable, Sendable {
         title: String,
         owningApplicationName: String?,
         pixelSize: CGSize,
+        screenFrame: CGRect? = nil,
         isAvailable: Bool
     ) {
         self.id = id
         self.title = title
         self.owningApplicationName = owningApplicationName
         self.pixelSize = pixelSize
+        self.screenFrame = screenFrame
         self.isAvailable = isAvailable
     }
 

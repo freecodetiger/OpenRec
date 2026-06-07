@@ -13,6 +13,7 @@ protocol RecordingFileMoving: AnyObject {
 }
 
 private let hotkeyRegistrationFailureMessage = "OpenRec could not register the global shortcut."
+private let currentlyRequiredPermissions: [PermissionKind] = [.screenRecording, .microphone]
 
 final class OpenRecAppCoreAdapter: AppShellAdapter {
     private let settingsStore: SettingsStore
@@ -224,7 +225,7 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
             microphones: microphones
         )
         let permissionStatuses = permissionChecker.statuses()
-        let requiredPermissions = PermissionKind.allCases.filter {
+        let requiredPermissions = currentlyRequiredPermissions.filter {
             permissionStatuses[$0] != .granted
         }
         let status = status(
@@ -352,7 +353,8 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
                 mode: .window,
                 source: window.source,
                 title: windowTitle(window),
-                subtitle: pixelSizeSubtitle(window.pixelSize)
+                subtitle: pixelSizeSubtitle(window.pixelSize),
+                screenFrame: window.screenFrame
             )
         }
     }
@@ -467,7 +469,7 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
             ],
             settings: .defaults,
             permissionStatuses: Dictionary(uniqueKeysWithValues: PermissionKind.allCases.map { ($0, .unknown) }),
-            requiredPermissions: PermissionKind.allCases,
+            requiredPermissions: currentlyRequiredPermissions,
             errorMessage: "Choose an available display or window.",
             elapsedTimeText: nil,
             pendingSaveURL: nil

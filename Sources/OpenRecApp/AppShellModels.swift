@@ -45,6 +45,7 @@ struct SourceTargetOption: Equatable, Identifiable, Sendable {
     var source: CaptureSource
     var title: String
     var subtitle: String
+    var screenFrame: CGRect? = nil
 
     var summary: String {
         title

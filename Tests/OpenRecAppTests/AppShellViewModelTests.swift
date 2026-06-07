@@ -268,6 +268,7 @@ import Foundation
                     title: "Notes",
                     owningApplicationName: "TextEdit",
                     pixelSize: CGSize(width: 1280, height: 720),
+                    screenFrame: CGRect(x: 80, y: 120, width: 640, height: 360),
                     isAvailable: true
                 )
             ]
@@ -289,6 +290,7 @@ import Foundation
     #expect(snapshot.selectedTarget.source == .window(WindowID(rawValue: 99)))
     #expect(snapshot.selectedTarget.title == "TextEdit - Notes")
     #expect(snapshot.selectedTarget.subtitle == "1280 x 720, original resolution")
+    #expect(snapshot.selectedTarget.screenFrame == CGRect(x: 80, y: 120, width: 640, height: 360))
     #expect(snapshot.availableTargets.map(\.source) == [
         .display(DisplayID(rawValue: 10)),
         .window(WindowID(rawValue: 99))
@@ -661,6 +663,43 @@ private func awaitingSaveAdapter(
     #expect(snapshot.status == .permissionRequired)
     #expect(snapshot.requiredPermissions == [.screenRecording])
     #expect(snapshot.permissionStatuses[.screenRecording] == .denied)
+}
+
+@MainActor
+@Test func productionAdapterDoesNotBlockCurrentRecordingForOptionalSystemPermissions() async {
+    let adapter = OpenRecAppCoreAdapter(
+        settingsStore: SettingsStore(settingsDirectory: temporarySettingsDirectory()),
+        captureSourceProvider: InMemoryCaptureSourceProvider(
+            displays: [
+                DisplaySourceMetadata(
+                    id: DisplayID(rawValue: 1),
+                    name: "Main Display",
+                    pixelSize: CGSize(width: 1920, height: 1080),
+                    isAvailable: true
+                )
+            ],
+            windows: []
+        ),
+        audioDeviceProvider: InMemoryAudioDeviceProvider(devices: [
+            MicrophoneDevice(id: "mic-1", name: "Built-in Microphone", isDefault: true)
+        ]),
+        permissionChecker: PermissionChecker(provider: InMemoryPermissionStatusProvider(
+            statuses: [
+                .screenRecording: .granted,
+                .microphone: .granted,
+                .accessibility: .denied,
+                .inputMonitoring: .denied
+            ]
+        )),
+        hotkeyManager: HotkeyManager(registry: InMemoryHotkeyRegistry())
+    )
+
+    let snapshot = await adapter.refresh()
+
+    #expect(snapshot.status == .ready)
+    #expect(snapshot.requiredPermissions.isEmpty)
+    #expect(snapshot.permissionStatuses[.accessibility] == .denied)
+    #expect(snapshot.permissionStatuses[.inputMonitoring] == .denied)
 }
 
 @MainActor

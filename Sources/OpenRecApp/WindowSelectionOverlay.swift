@@ -33,6 +33,60 @@ struct WindowSelectionOverlayModel: Equatable {
         highlightedTargetID = nil
         return nil
     }
+
+    func frame(
+        for target: SourceTargetOption,
+        index: Int,
+        in viewSize: CGSize,
+        overlayScreenFrame: CGRect
+    ) -> CGRect {
+        if let screenFrame = target.screenFrame, !screenFrame.isEmpty {
+            return localFrame(for: screenFrame, in: viewSize, overlayScreenFrame: overlayScreenFrame)
+        }
+
+        return fallbackFrame(for: index, count: targets.count, in: viewSize)
+    }
+
+    private func localFrame(
+        for screenFrame: CGRect,
+        in viewSize: CGSize,
+        overlayScreenFrame: CGRect
+    ) -> CGRect {
+        guard !overlayScreenFrame.isEmpty else { return screenFrame }
+
+        let scaleX = viewSize.width / overlayScreenFrame.width
+        let scaleY = viewSize.height / overlayScreenFrame.height
+        return CGRect(
+            x: (screenFrame.minX - overlayScreenFrame.minX) * scaleX,
+            y: (screenFrame.minY - overlayScreenFrame.minY) * scaleY,
+            width: screenFrame.width * scaleX,
+            height: screenFrame.height * scaleY
+        )
+    }
+
+    private func fallbackFrame(for index: Int, count: Int, in size: CGSize) -> CGRect {
+        let columns = max(1, min(3, count))
+        let rows = max(1, Int(ceil(Double(count) / Double(columns))))
+        let margin: CGFloat = 72
+        let spacing: CGFloat = 24
+        let availableWidth = max(320, size.width - margin * 2 - spacing * CGFloat(columns - 1))
+        let availableHeight = max(220, size.height - margin * 2 - spacing * CGFloat(rows - 1))
+        let width = min(420, availableWidth / CGFloat(columns))
+        let height = min(240, max(160, availableHeight / CGFloat(rows)))
+        let gridWidth = width * CGFloat(columns) + spacing * CGFloat(columns - 1)
+        let gridHeight = height * CGFloat(rows) + spacing * CGFloat(rows - 1)
+        let startX = (size.width - gridWidth) / 2
+        let startY = (size.height - gridHeight) / 2
+        let column = index % columns
+        let row = index / columns
+
+        return CGRect(
+            x: startX + CGFloat(column) * (width + spacing),
+            y: startY + CGFloat(row) * (height + spacing),
+            width: width,
+            height: height
+        )
+    }
 }
 
 @MainActor
@@ -46,14 +100,19 @@ final class WindowSelectionOverlayPresenter {
     ) {
         dismiss()
 
-        let overlayWindow = WindowSelectionOverlayWindow(onCancel: { [weak self] in
-            self?.dismiss()
-            onCancel()
-        })
+        let overlayScreenFrame = WindowSelectionOverlayWindow.overlayFrame()
+        let overlayWindow = WindowSelectionOverlayWindow(
+            overlayFrame: overlayScreenFrame,
+            onCancel: { [weak self] in
+                self?.dismiss()
+                onCancel()
+            }
+        )
         overlayWindow.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         overlayWindow.contentView = NSHostingView(
             rootView: WindowSelectionOverlayView(
                 targets: targets,
+                overlayScreenFrame: overlayScreenFrame,
                 onSelect: { [weak self] targetID in
                     self?.dismiss()
                     onSelect(targetID)
@@ -78,10 +137,13 @@ final class WindowSelectionOverlayPresenter {
 private final class WindowSelectionOverlayWindow: NSPanel {
     private let onCancel: @MainActor () -> Void
 
-    init(onCancel: @escaping @MainActor () -> Void) {
+    init(
+        overlayFrame: CGRect,
+        onCancel: @escaping @MainActor () -> Void
+    ) {
         self.onCancel = onCancel
         super.init(
-            contentRect: Self.overlayFrame(),
+            contentRect: overlayFrame,
             styleMask: [.borderless],
             backing: .buffered,
             defer: false
@@ -107,7 +169,7 @@ private final class WindowSelectionOverlayWindow: NSPanel {
         super.keyDown(with: event)
     }
 
-    private static func overlayFrame() -> CGRect {
+    static func overlayFrame() -> CGRect {
         NSScreen.screens
             .map(\.frame)
             .reduce(NSScreen.main?.frame ?? .zero) { $0.union($1) }
@@ -117,15 +179,18 @@ private final class WindowSelectionOverlayWindow: NSPanel {
 struct WindowSelectionOverlayView: View {
     @State private var model: WindowSelectionOverlayModel
 
+    private let overlayScreenFrame: CGRect
     private let onSelect: @MainActor (String) -> Void
     private let onCancel: @MainActor () -> Void
 
     init(
         targets: [SourceTargetOption],
+        overlayScreenFrame: CGRect,
         onSelect: @escaping @MainActor (String) -> Void,
         onCancel: @escaping @MainActor () -> Void
     ) {
         _model = State(initialValue: WindowSelectionOverlayModel(targets: targets))
+        self.overlayScreenFrame = overlayScreenFrame
         self.onSelect = onSelect
         self.onCancel = onCancel
     }
@@ -140,7 +205,12 @@ struct WindowSelectionOverlayView: View {
 
             GeometryReader { proxy in
                 ForEach(Array(model.targets.enumerated()), id: \.element.id) { index, target in
-                    let frame = frame(for: index, count: model.targets.count, in: proxy.size)
+                    let frame = model.frame(
+                        for: target,
+                        index: index,
+                        in: proxy.size,
+                        overlayScreenFrame: overlayScreenFrame
+                    )
                     windowTarget(target, frame: frame)
                 }
             }
@@ -200,27 +270,4 @@ struct WindowSelectionOverlayView: View {
         .animation(.easeOut(duration: 0.12), value: isHighlighted)
     }
 
-    private func frame(for index: Int, count: Int, in size: CGSize) -> CGRect {
-        let columns = max(1, min(3, count))
-        let rows = max(1, Int(ceil(Double(count) / Double(columns))))
-        let margin: CGFloat = 72
-        let spacing: CGFloat = 24
-        let availableWidth = max(320, size.width - margin * 2 - spacing * CGFloat(columns - 1))
-        let availableHeight = max(220, size.height - margin * 2 - spacing * CGFloat(rows - 1))
-        let width = min(420, availableWidth / CGFloat(columns))
-        let height = min(240, max(160, availableHeight / CGFloat(rows)))
-        let gridWidth = width * CGFloat(columns) + spacing * CGFloat(columns - 1)
-        let gridHeight = height * CGFloat(rows) + spacing * CGFloat(rows - 1)
-        let startX = (size.width - gridWidth) / 2
-        let startY = (size.height - gridHeight) / 2
-        let column = index % columns
-        let row = index / columns
-
-        return CGRect(
-            x: startX + CGFloat(column) * (width + spacing),
-            y: startY + CGFloat(row) * (height + spacing),
-            width: width,
-            height: height
-        )
-    }
 }
