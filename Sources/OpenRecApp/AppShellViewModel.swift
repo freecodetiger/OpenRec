@@ -14,6 +14,8 @@ protocol AppShellAdapter: AnyObject {
     func selectTarget(id: String) -> AppShellSnapshot
     func selectMicrophone(id: String) -> AppShellSnapshot
     func updateSettings(_ settings: RecordingSettings) -> AppShellSnapshot
+    func openPermissionSettings(for kind: PermissionKind) -> AppShellSnapshot
+    func refreshPermissions() -> AppShellSnapshot
     func saveRecording() -> AppShellSnapshot
     func retrySave() -> AppShellSnapshot
     func discardRecording() -> AppShellSnapshot
@@ -139,6 +141,14 @@ final class AppShellViewModel: ObservableObject {
     func updateSettings(_ settings: RecordingSettings) {
         guard settings != snapshot.settings else { return }
         snapshot = adapter.updateSettings(settings)
+    }
+
+    func openPermissionSettings(for kind: PermissionKind) {
+        snapshot = adapter.openPermissionSettings(for: kind)
+    }
+
+    func refreshPermissions() {
+        snapshot = adapter.refreshPermissions()
     }
 
     func saveRecording() {

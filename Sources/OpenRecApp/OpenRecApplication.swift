@@ -33,13 +33,19 @@ struct OpenRecApplication: App {
         WindowGroup("Preferences", id: "preferences") {
             PreferencesView(
                 snapshot: viewModel.snapshot,
-                onSettingsChange: viewModel.updateSettings
+                onSettingsChange: viewModel.updateSettings,
+                onOpenPermissionSettings: viewModel.openPermissionSettings,
+                onRefreshPermissions: viewModel.refreshPermissions
             )
         }
         .defaultSize(width: 560, height: 520)
 
         WindowGroup("Onboarding", id: "onboarding") {
-            OnboardingView(snapshot: viewModel.snapshot)
+            OnboardingView(
+                snapshot: viewModel.snapshot,
+                onOpenPermissionSettings: viewModel.openPermissionSettings,
+                onRefreshPermissions: viewModel.refreshPermissions
+            )
         }
         .defaultSize(width: 560, height: 460)
 

@@ -15,6 +15,7 @@ struct MenuBarPopoverView: View {
             modePicker
             targetPicker
             microphonePicker
+            permissionActions
 
             Divider()
 
@@ -85,6 +86,28 @@ struct MenuBarPopoverView: View {
                     Text(microphone.title).tag(microphone.id)
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private var permissionActions: some View {
+        if viewModel.snapshot.status == .permissionRequired {
+            HStack {
+                Button {
+                    viewModel.openPermissionSettings(
+                        for: viewModel.snapshot.requiredPermissions.first ?? .screenRecording
+                    )
+                } label: {
+                    Label("Open System Settings", systemImage: "gearshape")
+                }
+
+                Button {
+                    viewModel.refreshPermissions()
+                } label: {
+                    Label("Re-check", systemImage: "arrow.clockwise")
+                }
+            }
+            .buttonStyle(.borderless)
         }
     }
 

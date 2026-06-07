@@ -4,14 +4,20 @@ import OpenRecCore
 struct PreferencesView: View {
     var snapshot: AppShellSnapshot
     var onSettingsChange: (RecordingSettings) -> Void = { _ in }
+    var onOpenPermissionSettings: (PermissionKind) -> Void = { _ in }
+    var onRefreshPermissions: () -> Void = {}
     @State private var draftSettings: RecordingSettings
 
     init(
         snapshot: AppShellSnapshot,
-        onSettingsChange: @escaping (RecordingSettings) -> Void = { _ in }
+        onSettingsChange: @escaping (RecordingSettings) -> Void = { _ in },
+        onOpenPermissionSettings: @escaping (PermissionKind) -> Void = { _ in },
+        onRefreshPermissions: @escaping () -> Void = {}
     ) {
         self.snapshot = snapshot
         self.onSettingsChange = onSettingsChange
+        self.onOpenPermissionSettings = onOpenPermissionSettings
+        self.onRefreshPermissions = onRefreshPermissions
         _draftSettings = State(initialValue: snapshot.settings)
     }
 
@@ -81,7 +87,13 @@ struct PreferencesView: View {
             .padding(20)
             .tabItem { Label("Shortcuts", systemImage: "keyboard") }
 
-            PermissionPlaceholderView(snapshot: snapshot)
+            Form {
+                PermissionPlaceholderView(
+                    snapshot: snapshot,
+                    onOpenPermissionSettings: onOpenPermissionSettings
+                )
+                Button("Re-check Permissions", action: onRefreshPermissions)
+            }
                 .padding(20)
                 .tabItem { Label("Permissions", systemImage: "lock.shield") }
         }

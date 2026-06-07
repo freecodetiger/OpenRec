@@ -10,8 +10,11 @@ final class MockAppCoreAdapter: AppShellAdapter {
     private(set) var saveRecordingCallCount = 0
     private(set) var retrySaveCallCount = 0
     private(set) var discardRecordingCallCount = 0
+    private(set) var refreshPermissionsCallCount = 0
     private(set) var selectModes: [CaptureMode] = []
     private(set) var selectTargetIDs: [String] = []
+    private(set) var openedPermissionSettings: [PermissionKind] = []
+    var permissionRefreshSnapshot: AppShellSnapshot?
     private let hotkeyManager: HotkeyManager?
 
     init(initialSnapshot: AppShellSnapshot = .ready, hotkeyManager: HotkeyManager? = nil) {
@@ -89,6 +92,19 @@ final class MockAppCoreAdapter: AppShellAdapter {
         if let microphoneDeviceID = settings.microphoneDeviceID,
            let microphone = snapshot.microphones.first(where: { $0.deviceID == microphoneDeviceID }) {
             snapshot.selectedMicrophoneID = microphone.id
+        }
+        return snapshot
+    }
+
+    func openPermissionSettings(for kind: PermissionKind) -> AppShellSnapshot {
+        openedPermissionSettings.append(kind)
+        return snapshot
+    }
+
+    func refreshPermissions() -> AppShellSnapshot {
+        refreshPermissionsCallCount += 1
+        if let permissionRefreshSnapshot {
+            snapshot = permissionRefreshSnapshot
         }
         return snapshot
     }

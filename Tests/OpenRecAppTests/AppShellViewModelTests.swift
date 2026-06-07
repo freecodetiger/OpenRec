@@ -118,6 +118,33 @@ import Foundation
 }
 
 @MainActor
+@Test func viewModelOpensPermissionSettingsThroughAdapter() {
+    let adapter = MockAppCoreAdapter(initialSnapshot: .permissionRequired)
+    let viewModel = AppShellViewModel(adapter: adapter)
+
+    viewModel.openPermissionSettings(for: .screenRecording)
+
+    #expect(adapter.openedPermissionSettings == [.screenRecording])
+}
+
+@MainActor
+@Test func viewModelRechecksPermissionsThroughAdapter() {
+    var grantedSnapshot = AppShellSnapshot.permissionRequired
+    grantedSnapshot.status = .ready
+    grantedSnapshot.permissionStatuses = Dictionary(uniqueKeysWithValues: PermissionKind.allCases.map { ($0, .granted) })
+    grantedSnapshot.requiredPermissions = []
+    let adapter = MockAppCoreAdapter(initialSnapshot: .permissionRequired)
+    adapter.permissionRefreshSnapshot = grantedSnapshot
+    let viewModel = AppShellViewModel(adapter: adapter)
+
+    viewModel.refreshPermissions()
+
+    #expect(adapter.refreshPermissionsCallCount == 1)
+    #expect(viewModel.snapshot.status == .ready)
+    #expect(viewModel.snapshot.requiredPermissions.isEmpty)
+}
+
+@MainActor
 @Test func viewModelExposesSaveFlowActionsOnlyWhileAwaitingSave() {
     let adapter = MockAppCoreAdapter(initialSnapshot: .awaitingSave)
     let viewModel = AppShellViewModel(adapter: adapter)
@@ -637,6 +664,75 @@ private func awaitingSaveAdapter(
 }
 
 @MainActor
+@Test func productionAdapterOpensSystemSettingsForPermissionKind() {
+    let opener = SpySystemSettingsOpener()
+    let adapter = OpenRecAppCoreAdapter(
+        settingsStore: SettingsStore(settingsDirectory: temporarySettingsDirectory()),
+        captureSourceProvider: InMemoryCaptureSourceProvider(displays: [], windows: []),
+        audioDeviceProvider: InMemoryAudioDeviceProvider(devices: []),
+        permissionChecker: PermissionChecker(provider: InMemoryPermissionStatusProvider(statuses: [:])),
+        hotkeyManager: HotkeyManager(registry: InMemoryHotkeyRegistry()),
+        systemSettingsOpener: opener
+    )
+
+    _ = adapter.openPermissionSettings(for: .microphone)
+
+    #expect(opener.openedPermissionKinds == [.microphone])
+}
+
+@MainActor
+@Test func productionAdapterRechecksPermissionsWithoutReloadingSettingsStore() async throws {
+    let provider = MutablePermissionStatusProvider(statuses: [
+        .screenRecording: .denied,
+        .microphone: .granted,
+        .accessibility: .granted,
+        .inputMonitoring: .granted
+    ])
+    let settingsDirectory = temporarySettingsDirectory()
+    let settingsStore = SettingsStore(settingsDirectory: settingsDirectory)
+    let adapter = OpenRecAppCoreAdapter(
+        settingsStore: settingsStore,
+        captureSourceProvider: InMemoryCaptureSourceProvider(
+            displays: [
+                DisplaySourceMetadata(
+                    id: DisplayID(rawValue: 1),
+                    name: "Main Display",
+                    pixelSize: CGSize(width: 1920, height: 1080),
+                    isAvailable: true
+                )
+            ],
+            windows: []
+        ),
+        audioDeviceProvider: InMemoryAudioDeviceProvider(devices: [
+            MicrophoneDevice(id: "mic-1", name: "Built-in Microphone", isDefault: true)
+        ]),
+        permissionChecker: PermissionChecker(provider: provider),
+        hotkeyManager: HotkeyManager(registry: InMemoryHotkeyRegistry())
+    )
+
+    _ = await adapter.refresh()
+    provider.statuses[.screenRecording] = .granted
+    let snapshot = adapter.refreshPermissions()
+
+    #expect(snapshot.status == .ready)
+    #expect(snapshot.requiredPermissions.isEmpty)
+    #expect(snapshot.permissionStatuses[.screenRecording] == .granted)
+    #expect(try settingsStore.load().recording == .defaults)
+}
+
+@Test func systemSettingsPermissionURLsTargetExpectedPrivacyPanes() {
+    #expect(SystemSettingsPermissionPane.url(for: .screenRecording).absoluteString.contains("Privacy_ScreenCapture"))
+    #expect(SystemSettingsPermissionPane.url(for: .microphone).absoluteString.contains("Privacy_Microphone"))
+    #expect(SystemSettingsPermissionPane.url(for: .accessibility).absoluteString.contains("Privacy_Accessibility"))
+    #expect(SystemSettingsPermissionPane.url(for: .inputMonitoring).absoluteString.contains("Privacy_ListenEvent"))
+
+    for kind in PermissionKind.allCases {
+        #expect(SystemSettingsPermissionPane.url(for: kind).scheme == "x-apple.systempreferences")
+        #expect(!SystemSettingsPermissionPane.url(for: kind).absoluteString.hasPrefix("http"))
+    }
+}
+
+@MainActor
 @Test func productionAdapterStartsRecordingWithInjectedDefaultEngine() async {
     let engine = NoOpRecordingEngine()
     let adapter = OpenRecAppCoreAdapter(
@@ -968,3 +1064,24 @@ private final class SpyRecordingFileMover: RecordingFileMoving {
 }
 
 private struct TestSaveMoveError: Error {}
+
+@MainActor
+private final class SpySystemSettingsOpener: SystemSettingsOpening {
+    private(set) var openedPermissionKinds: [PermissionKind] = []
+
+    func openPermissionSettings(for kind: PermissionKind) {
+        openedPermissionKinds.append(kind)
+    }
+}
+
+private final class MutablePermissionStatusProvider: PermissionStatusProvider, @unchecked Sendable {
+    var statuses: [PermissionKind: PermissionStatus]
+
+    init(statuses: [PermissionKind: PermissionStatus]) {
+        self.statuses = statuses
+    }
+
+    func status(for kind: PermissionKind) -> PermissionStatus {
+        statuses[kind] ?? .unknown
+    }
+}

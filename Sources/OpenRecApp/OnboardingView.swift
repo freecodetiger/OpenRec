@@ -1,7 +1,10 @@
 import SwiftUI
+import OpenRecCore
 
 struct OnboardingView: View {
     var snapshot: AppShellSnapshot
+    var onOpenPermissionSettings: (PermissionKind) -> Void = { _ in }
+    var onRefreshPermissions: () -> Void = {}
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -11,15 +14,18 @@ struct OnboardingView: View {
             Text("OpenRec records locally and needs macOS access before capture can start.")
                 .foregroundStyle(.secondary)
 
-            PermissionPlaceholderView(snapshot: snapshot)
+            PermissionPlaceholderView(
+                snapshot: snapshot,
+                onOpenPermissionSettings: onOpenPermissionSettings
+            )
 
             Spacer()
 
             HStack {
-                Button("Open System Settings") {}
-                    .disabled(true)
-                Button("Re-check Permissions") {}
-                    .disabled(true)
+                Button("Open System Settings") {
+                    onOpenPermissionSettings(snapshot.requiredPermissions.first ?? .screenRecording)
+                }
+                Button("Re-check Permissions", action: onRefreshPermissions)
             }
         }
         .padding(28)
@@ -28,6 +34,7 @@ struct OnboardingView: View {
 
 struct PermissionPlaceholderView: View {
     var snapshot: AppShellSnapshot
+    var onOpenPermissionSettings: (PermissionKind) -> Void = { _ in }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -42,6 +49,9 @@ struct PermissionPlaceholderView: View {
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
+                    Button("Open Settings") {
+                        onOpenPermissionSettings(item.kind)
+                    }
                 }
             }
         }

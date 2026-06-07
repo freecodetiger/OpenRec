@@ -24,6 +24,7 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
     private let sourceValidator: AppCaptureSourceValidator
     private let savePanel: any RecordingSavePanelPresenting
     private let fileMover: any RecordingFileMoving
+    private let systemSettingsOpener: any SystemSettingsOpening
 
     private(set) var snapshot: AppShellSnapshot
     var onHotkeyTriggered: (@MainActor @Sendable () -> Void)?
@@ -41,7 +42,8 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
         recordingEngine: (any RecordingEngine)? = nil,
         recordingCoordinator: RecordingCoordinator? = nil,
         savePanel: any RecordingSavePanelPresenting = NSSavePanelRecordingSavePanel(),
-        fileMover: any RecordingFileMoving = FileManagerRecordingFileMover()
+        fileMover: any RecordingFileMoving = FileManagerRecordingFileMover(),
+        systemSettingsOpener: any SystemSettingsOpening = NSWorkspaceSystemSettingsOpener()
     ) {
         self.settingsStore = settingsStore
         self.captureSourceProvider = captureSourceProvider
@@ -55,6 +57,7 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
         self.sourceValidator = sourceValidator
         self.savePanel = savePanel
         self.fileMover = fileMover
+        self.systemSettingsOpener = systemSettingsOpener
         self.hotkeyRegistrationErrorMessage = nil
         self.recordingCoordinator = recordingCoordinator ?? RecordingCoordinator(
             permissionValidator: DefaultRecordingPermissionValidator(permissionChecker: permissionChecker),
@@ -189,6 +192,17 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
         }
 
         snapshot = buildSnapshot(settings: settings, recordingState: recordingCoordinator.state)
+        return snapshot
+    }
+
+    func openPermissionSettings(for kind: PermissionKind) -> AppShellSnapshot {
+        systemSettingsOpener.openPermissionSettings(for: kind)
+        return snapshot
+    }
+
+    func refreshPermissions() -> AppShellSnapshot {
+        snapshot = buildSnapshot(settings: snapshot.settings, recordingState: recordingCoordinator.state)
+            .withHotkeyRegistrationError(hotkeyRegistrationErrorMessage)
         return snapshot
     }
 
