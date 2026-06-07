@@ -8,6 +8,8 @@ extension AppShellStatus {
             "Ready"
         case .recording:
             "Rec"
+        case .awaitingSave:
+            "Save"
         case .permissionRequired:
             "Perm"
         case .error:
@@ -21,6 +23,8 @@ extension AppShellStatus {
             "checkmark.circle.fill"
         case .recording:
             "record.circle.fill"
+        case .awaitingSave:
+            "square.and.arrow.down.fill"
         case .permissionRequired:
             "exclamationmark.triangle.fill"
         case .error:
@@ -34,6 +38,8 @@ extension AppShellStatus {
             .green
         case .recording:
             .red
+        case .awaitingSave:
+            .blue
         case .permissionRequired:
             .orange
         case .error:

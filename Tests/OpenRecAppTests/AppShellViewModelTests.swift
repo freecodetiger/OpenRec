@@ -36,6 +36,49 @@ import Foundation
     #expect(viewModel.canStartRecording == false)
 }
 
+@MainActor
+@Test func viewModelExposesSaveFlowActionsOnlyWhileAwaitingSave() {
+    let adapter = MockAppCoreAdapter(initialSnapshot: .awaitingSave)
+    let viewModel = AppShellViewModel(adapter: adapter)
+
+    #expect(viewModel.canSaveRecording == true)
+    #expect(viewModel.canRetrySave == true)
+    #expect(viewModel.canDiscardRecording == true)
+    #expect(viewModel.canStartRecording == false)
+
+    viewModel.retrySave()
+    #expect(adapter.retrySaveCallCount == 1)
+
+    let saveAdapter = MockAppCoreAdapter(initialSnapshot: .awaitingSave)
+    let saveViewModel = AppShellViewModel(adapter: saveAdapter)
+    saveViewModel.saveRecording()
+    #expect(saveAdapter.saveRecordingCallCount == 1)
+    #expect(saveViewModel.snapshot.status == .ready)
+
+    let discardAdapter = MockAppCoreAdapter(initialSnapshot: .awaitingSave)
+    let discardViewModel = AppShellViewModel(adapter: discardAdapter)
+    discardViewModel.discardRecording()
+    #expect(discardAdapter.discardRecordingCallCount == 1)
+    #expect(discardViewModel.snapshot.status == .ready)
+}
+
+@MainActor
+@Test func saveFlowActionsIgnoreNonAwaitingSaveSnapshots() {
+    let adapter = MockAppCoreAdapter(initialSnapshot: .ready)
+    let viewModel = AppShellViewModel(adapter: adapter)
+
+    viewModel.retrySave()
+    viewModel.saveRecording()
+    viewModel.discardRecording()
+
+    #expect(adapter.retrySaveCallCount == 0)
+    #expect(adapter.saveRecordingCallCount == 0)
+    #expect(adapter.discardRecordingCallCount == 0)
+    #expect(viewModel.canSaveRecording == false)
+    #expect(viewModel.canRetrySave == false)
+    #expect(viewModel.canDiscardRecording == false)
+}
+
 @Test func sourceSummaryUsesCoreCaptureSource() {
     let snapshot = AppShellSnapshot.ready
 
@@ -147,6 +190,78 @@ import Foundation
     #expect(snapshot.settings.outputFormat == .mov)
     #expect(snapshot.settings.videoCodec == .hevc)
     #expect(snapshot.requiredPermissions.isEmpty)
+}
+
+@MainActor
+@Test func productionAdapterMapsCoreAwaitingSaveToAppSaveFlowSnapshot() async {
+    let pendingURL = URL(filePath: "/tmp/openrec-finalized.mp4")
+    let adapter = awaitingSaveAdapter(pendingURL: pendingURL)
+
+    let snapshot = await adapter.refresh()
+
+    #expect(snapshot.status == .awaitingSave)
+    #expect(snapshot.pendingSaveURL == pendingURL)
+    #expect(snapshot.errorMessage == nil)
+}
+
+@MainActor
+@Test func productionAdapterSaveRetryAndDiscardRespectAwaitingSaveBoundary() async {
+    let pendingURL = URL(filePath: "/tmp/openrec-finalized.mp4")
+    let finalizer = NoOpTemporaryRecordingFinalizer()
+    let adapter = awaitingSaveAdapter(pendingURL: pendingURL, finalizer: finalizer)
+
+    _ = await adapter.refresh()
+    let retrySnapshot = adapter.retrySave()
+    let savedSnapshot = adapter.saveRecording()
+
+    #expect(retrySnapshot.status == .awaitingSave)
+    #expect(retrySnapshot.errorMessage == "Choose a save location or discard the recording.")
+    #expect(savedSnapshot.status == .ready)
+    #expect(savedSnapshot.pendingSaveURL == nil)
+
+    let discardAdapter = awaitingSaveAdapter(pendingURL: pendingURL, finalizer: finalizer)
+
+    _ = await discardAdapter.refresh()
+    let discardedSnapshot = discardAdapter.discardRecording()
+
+    #expect(discardedSnapshot.status == .ready)
+    #expect(discardedSnapshot.pendingSaveURL == nil)
+    #expect(finalizer.discardedURLs == [pendingURL])
+}
+
+@MainActor
+private func awaitingSaveAdapter(
+    pendingURL: URL,
+    finalizer: NoOpTemporaryRecordingFinalizer = NoOpTemporaryRecordingFinalizer()
+) -> OpenRecAppCoreAdapter {
+    OpenRecAppCoreAdapter(
+        settingsStore: SettingsStore(settingsDirectory: temporarySettingsDirectory()),
+        captureSourceProvider: InMemoryCaptureSourceProvider(
+            displays: [
+                DisplaySourceMetadata(
+                    id: DisplayID(rawValue: 1),
+                    name: "Main Display",
+                    pixelSize: CGSize(width: 1920, height: 1080),
+                    isAvailable: true
+                )
+            ],
+            windows: []
+        ),
+        audioDeviceProvider: InMemoryAudioDeviceProvider(devices: [
+            MicrophoneDevice(id: "mic-1", name: "Built-in Microphone", isDefault: true)
+        ]),
+        permissionChecker: PermissionChecker(provider: InMemoryPermissionStatusProvider(
+            statuses: Dictionary(uniqueKeysWithValues: PermissionKind.allCases.map { ($0, .granted) })
+        )),
+        hotkeyManager: HotkeyManager(registry: InMemoryHotkeyRegistry()),
+        recordingCoordinator: RecordingCoordinator(
+            permissionValidator: NoOpRecordingPermissionValidator(),
+            configurationResolver: NoOpRecordingConfigurationResolver(),
+            engine: NoOpRecordingEngine(),
+            finalizer: finalizer,
+            initialState: .awaitingSave(pendingURL)
+        )
+    )
 }
 
 @MainActor
@@ -309,4 +424,48 @@ private func temporarySettingsDirectory() -> URL {
     FileManager.default.temporaryDirectory
         .appending(path: "OpenRecAppTests")
         .appending(path: UUID().uuidString)
+}
+
+private struct NoOpRecordingPermissionValidator: RecordingPermissionValidating {
+    func validateRecordingPermissions() throws {}
+}
+
+private struct NoOpRecordingConfigurationResolver: RecordingConfigurationResolving {
+    func resolve(
+        source: CaptureSource,
+        settings: RecordingSettings
+    ) throws -> ResolvedRecordingConfiguration {
+        ResolvedRecordingConfiguration(
+            source: source,
+            pixelSize: CGSize(width: 1920, height: 1080),
+            outputFormat: .mp4,
+            videoCodec: .h264,
+            bitrate: 7_464_960,
+            frameRate: 30,
+            includeCursor: true,
+            microphoneDeviceID: nil
+        )
+    }
+}
+
+private struct NoOpRecordingEngine: RecordingEngine {
+    func start(configuration: ResolvedRecordingConfiguration) throws -> RecordingSession {
+        RecordingSession(
+            id: UUID(),
+            source: configuration.source,
+            temporaryFileURL: URL(filePath: "/tmp/openrec-recording.tmp")
+        )
+    }
+
+    func stop(session: RecordingSession) throws -> URL {
+        URL(filePath: "/tmp/openrec-finalized.mp4")
+    }
+}
+
+private final class NoOpTemporaryRecordingFinalizer: TemporaryRecordingFinalizing, @unchecked Sendable {
+    private(set) var discardedURLs: [URL] = []
+
+    func discardTemporaryRecording(at url: URL) throws {
+        discardedURLs.append(url)
+    }
 }

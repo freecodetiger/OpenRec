@@ -181,8 +181,46 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
             permissionStatuses: permissionStatuses,
             requiredPermissions: requiredPermissions,
             errorMessage: errorMessage(for: recordingState),
-            elapsedTimeText: elapsedTimeText(for: recordingState)
+            elapsedTimeText: elapsedTimeText(for: recordingState),
+            pendingSaveURL: pendingSaveURL(for: recordingState)
         )
+    }
+
+    func saveRecording() -> AppShellSnapshot {
+        guard snapshot.status == .awaitingSave else { return snapshot }
+
+        do {
+            try recordingCoordinator.markSaved()
+            snapshot = buildSnapshot(settings: snapshot.settings, recordingState: recordingCoordinator.state)
+        } catch {
+            snapshot = buildSnapshot(settings: snapshot.settings, recordingState: recordingCoordinator.state)
+                .withError(AppErrorPresenter.message(for: error))
+        }
+
+        return snapshot
+    }
+
+    func retrySave() -> AppShellSnapshot {
+        guard snapshot.status == .awaitingSave else { return snapshot }
+
+        let error = recordingCoordinator.saveCancelled()
+        snapshot = buildSnapshot(settings: snapshot.settings, recordingState: recordingCoordinator.state)
+        snapshot.errorMessage = AppErrorPresenter.message(for: error)
+        return snapshot
+    }
+
+    func discardRecording() -> AppShellSnapshot {
+        guard snapshot.status == .awaitingSave else { return snapshot }
+
+        do {
+            try recordingCoordinator.discard()
+            snapshot = buildSnapshot(settings: snapshot.settings, recordingState: recordingCoordinator.state)
+        } catch {
+            snapshot = buildSnapshot(settings: snapshot.settings, recordingState: recordingCoordinator.state)
+                .withError(AppErrorPresenter.message(for: error))
+        }
+
+        return snapshot
     }
 
     private func save(settings: RecordingSettings) -> Bool {
@@ -293,9 +331,11 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
         switch recordingState {
         case .recording, .stopping:
             return .recording
+        case .awaitingSave:
+            return .awaitingSave
         case .failed:
             return .error
-        case .preparing, .awaitingSave, .idle:
+        case .preparing, .idle:
             return hasTarget ? .ready : .error
         }
     }
@@ -308,6 +348,11 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
     private func elapsedTimeText(for recordingState: RecordingState) -> String? {
         guard case .recording = recordingState else { return nil }
         return "00:00"
+    }
+
+    private func pendingSaveURL(for recordingState: RecordingState) -> URL? {
+        guard case let .awaitingSave(url) = recordingState else { return nil }
+        return url
     }
 
     private func windowTitle(_ window: WindowSourceMetadata) -> String {
@@ -349,7 +394,8 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
             permissionStatuses: Dictionary(uniqueKeysWithValues: PermissionKind.allCases.map { ($0, .unknown) }),
             requiredPermissions: PermissionKind.allCases,
             errorMessage: "Choose an available display or window.",
-            elapsedTimeText: nil
+            elapsedTimeText: nil,
+            pendingSaveURL: nil
         )
     }
 }
@@ -360,6 +406,7 @@ private extension AppShellSnapshot {
         next.status = .error
         next.errorMessage = message
         next.elapsedTimeText = nil
+        next.pendingSaveURL = nil
         return next
     }
 }
