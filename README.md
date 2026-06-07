@@ -53,4 +53,4 @@ MVP release builds are not code signed or notarized. macOS Gatekeeper may block 
 
 ## License
 
-OpenRec is planned to use the MIT License. Until a `LICENSE` file is added, treat the license text as pending and do not redistribute release artifacts as MIT-licensed binaries without adding the license file.
+OpenRec is released under the MIT License. See `LICENSE`.
