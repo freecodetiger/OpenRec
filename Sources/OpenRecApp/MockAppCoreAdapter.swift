@@ -57,6 +57,19 @@ final class MockAppCoreAdapter: AppShellAdapter {
         return snapshot
     }
 
+    func updateSettings(_ settings: RecordingSettings) -> AppShellSnapshot {
+        snapshot.settings = settings
+        snapshot.mode = settings.defaultMode
+        if let target = snapshot.availableTargets.first(where: { $0.mode == settings.defaultMode }) {
+            snapshot.selectedTarget = target
+        }
+        if let microphoneDeviceID = settings.microphoneDeviceID,
+           let microphone = snapshot.microphones.first(where: { $0.deviceID == microphoneDeviceID }) {
+            snapshot.selectedMicrophoneID = microphone.id
+        }
+        return snapshot
+    }
+
     func saveRecording() -> AppShellSnapshot {
         guard snapshot.status == .awaitingSave else { return snapshot }
         saveRecordingCallCount += 1

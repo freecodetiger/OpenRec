@@ -29,7 +29,10 @@ struct OpenRecApplication: App {
         .menuBarExtraStyle(.window)
 
         WindowGroup("Preferences", id: "preferences") {
-            PreferencesView(snapshot: viewModel.snapshot)
+            PreferencesView(
+                snapshot: viewModel.snapshot,
+                onSettingsChange: viewModel.updateSettings
+            )
         }
         .defaultSize(width: 560, height: 520)
 

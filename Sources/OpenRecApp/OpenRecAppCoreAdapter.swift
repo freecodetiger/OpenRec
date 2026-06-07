@@ -122,17 +122,9 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
     }
 
     func selectMode(_ mode: CaptureMode) -> AppShellSnapshot {
-        var next = snapshot
-        next.mode = mode
-        if let target = next.availableTargets.first(where: { $0.mode == mode }) {
-            next.selectedTarget = target
-        }
-        next.settings.defaultMode = mode
-        guard save(settings: next.settings) else {
-            return snapshot
-        }
-        snapshot = next
-        return snapshot
+        var settings = snapshot.settings
+        settings.defaultMode = mode
+        return updateSettings(settings)
     }
 
     func selectTarget(id: String) -> AppShellSnapshot {
@@ -152,12 +144,15 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
 
         var settings = snapshot.settings
         settings.microphoneDeviceID = microphone.deviceID
+        return updateSettings(settings)
+    }
+
+    func updateSettings(_ settings: RecordingSettings) -> AppShellSnapshot {
         guard save(settings: settings) else {
             return snapshot
         }
 
-        snapshot.settings = settings
-        snapshot.selectedMicrophoneID = id
+        snapshot = buildSnapshot(settings: settings, recordingState: recordingCoordinator.state)
         return snapshot
     }
 

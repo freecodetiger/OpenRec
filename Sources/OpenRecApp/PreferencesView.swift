@@ -3,36 +3,51 @@ import OpenRecCore
 
 struct PreferencesView: View {
     var snapshot: AppShellSnapshot
+    var onSettingsChange: (RecordingSettings) -> Void = { _ in }
+    @State private var draftSettings: RecordingSettings
+
+    init(
+        snapshot: AppShellSnapshot,
+        onSettingsChange: @escaping (RecordingSettings) -> Void = { _ in }
+    ) {
+        self.snapshot = snapshot
+        self.onSettingsChange = onSettingsChange
+        _draftSettings = State(initialValue: snapshot.settings)
+    }
 
     var body: some View {
         TabView {
             Form {
-                Picker("Default mode", selection: .constant(snapshot.settings.defaultMode)) {
+                settingsError
+
+                Picker("Default mode", selection: settingBinding(\.defaultMode)) {
                     Text("Display Recording").tag(CaptureMode.display)
                     Text("Window Recording").tag(CaptureMode.window)
                 }
-                Toggle("Show system cursor", isOn: .constant(snapshot.settings.includeCursor))
+                Toggle("Show system cursor", isOn: settingBinding(\.includeCursor))
             }
             .padding(20)
             .tabItem { Label("Recording", systemImage: "record.circle") }
 
             Form {
-                Picker("Format", selection: .constant(snapshot.settings.outputFormat)) {
+                settingsError
+
+                Picker("Format", selection: settingBinding(\.outputFormat)) {
                     ForEach(OutputFormat.allCases, id: \.self) { format in
                         Text(format.label).tag(format)
                     }
                 }
-                Picker("Codec", selection: .constant(snapshot.settings.videoCodec)) {
+                Picker("Codec", selection: settingBinding(\.videoCodec)) {
                     ForEach(VideoCodec.allCases, id: \.self) { codec in
                         Text(codec.label).tag(codec)
                     }
                 }
-                Picker("Frame rate", selection: .constant(snapshot.settings.frameRate)) {
+                Picker("Frame rate", selection: settingBinding(\.frameRate)) {
                     ForEach(FrameRatePreset.allCases, id: \.self) { frameRate in
                         Text(frameRate.label).tag(frameRate)
                     }
                 }
-                Picker("Quality", selection: .constant(snapshot.settings.qualityPreset)) {
+                Picker("Quality", selection: settingBinding(\.qualityPreset)) {
                     ForEach(QualityPreset.allCases, id: \.self) { quality in
                         Text(quality.label).tag(quality)
                     }
@@ -42,12 +57,14 @@ struct PreferencesView: View {
             .tabItem { Label("Video", systemImage: "film") }
 
             Form {
-                Picker("Microphone", selection: .constant(snapshot.selectedMicrophoneID)) {
+                settingsError
+
+                Picker("Microphone", selection: microphoneBinding) {
                     ForEach(snapshot.microphones) { microphone in
                         Text(microphone.title).tag(microphone.id)
                     }
                 }
-                Picker("Audio quality", selection: .constant(snapshot.settings.audioPreset)) {
+                Picker("Audio quality", selection: settingBinding(\.audioPreset)) {
                     ForEach(AudioPreset.allCases, id: \.self) { preset in
                         Text(preset.label).tag(preset)
                     }
@@ -68,6 +85,58 @@ struct PreferencesView: View {
                 .padding(20)
                 .tabItem { Label("Permissions", systemImage: "lock.shield") }
         }
+        .onChange(of: snapshot) { _, snapshot in
+            draftSettings = snapshot.settings
+        }
+    }
+
+    @ViewBuilder
+    private var settingsError: some View {
+        if let errorMessage = snapshot.errorMessage {
+            Text(errorMessage)
+                .foregroundStyle(.red)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var microphoneBinding: Binding<String> {
+        Binding(
+            get: { draftSelectedMicrophoneID },
+            set: { selectedID in
+                guard let microphone = snapshot.microphones.first(where: { $0.id == selectedID }) else {
+                    return
+                }
+                updateSettings { settings in
+                    settings.microphoneDeviceID = microphone.deviceID
+                }
+            }
+        )
+    }
+
+    private var draftSelectedMicrophoneID: String {
+        snapshot.microphones.first { $0.deviceID == draftSettings.microphoneDeviceID }?.id ??
+            snapshot.selectedMicrophoneID
+    }
+
+    private func settingBinding<Value: Equatable>(
+        _ keyPath: WritableKeyPath<RecordingSettings, Value>
+    ) -> Binding<Value> {
+        Binding(
+            get: { draftSettings[keyPath: keyPath] },
+            set: { value in
+                updateSettings { settings in
+                    settings[keyPath: keyPath] = value
+                }
+            }
+        )
+    }
+
+    private func updateSettings(_ update: (inout RecordingSettings) -> Void) {
+        var settings = draftSettings
+        update(&settings)
+        guard settings != draftSettings else { return }
+        draftSettings = settings
+        onSettingsChange(settings)
     }
 }
 

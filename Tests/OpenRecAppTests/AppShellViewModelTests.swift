@@ -508,6 +508,103 @@ private func awaitingSaveAdapter(
 }
 
 @MainActor
+@Test func viewModelPersistsVideoPreferencePresetChanges() async throws {
+    let settingsDirectory = temporarySettingsDirectory()
+    let settingsStore = SettingsStore(settingsDirectory: settingsDirectory)
+    let adapter = editablePreferencesAdapter(settingsStore: settingsStore)
+    let viewModel = AppShellViewModel(adapter: adapter)
+
+    await viewModel.refresh()
+    var settings = viewModel.snapshot.settings
+    settings.outputFormat = .mov
+    settings.videoCodec = .hevc
+    settings.frameRate = .fps60
+    settings.qualityPreset = .high
+
+    viewModel.updateSettings(settings)
+
+    let persistedSettings = try settingsStore.load().recording
+    #expect(persistedSettings.outputFormat == .mov)
+    #expect(persistedSettings.videoCodec == .hevc)
+    #expect(persistedSettings.frameRate == .fps60)
+    #expect(persistedSettings.qualityPreset == .high)
+    #expect(viewModel.snapshot.settings.outputFormat == .mov)
+    #expect(viewModel.snapshot.settings.videoCodec == .hevc)
+    #expect(viewModel.snapshot.settings.frameRate == .fps60)
+    #expect(viewModel.snapshot.settings.qualityPreset == .high)
+}
+
+@MainActor
+@Test func viewModelPersistsCursorAndDefaultModePreferenceChanges() async throws {
+    let settingsDirectory = temporarySettingsDirectory()
+    let settingsStore = SettingsStore(settingsDirectory: settingsDirectory)
+    let adapter = editablePreferencesAdapter(settingsStore: settingsStore)
+    let viewModel = AppShellViewModel(adapter: adapter)
+
+    await viewModel.refresh()
+    var settings = viewModel.snapshot.settings
+    settings.defaultMode = .window
+    settings.includeCursor = false
+
+    viewModel.updateSettings(settings)
+
+    let persistedSettings = try settingsStore.load().recording
+    #expect(persistedSettings.defaultMode == .window)
+    #expect(persistedSettings.includeCursor == false)
+    #expect(viewModel.snapshot.mode == .window)
+    #expect(viewModel.snapshot.selectedTarget.source == .window(WindowID(rawValue: 7)))
+    #expect(viewModel.snapshot.settings.defaultMode == .window)
+    #expect(viewModel.snapshot.settings.includeCursor == false)
+}
+
+@MainActor
+@Test func viewModelPersistsMicrophoneAndAudioPresetPreferenceChanges() async throws {
+    let settingsDirectory = temporarySettingsDirectory()
+    let settingsStore = SettingsStore(settingsDirectory: settingsDirectory)
+    let adapter = editablePreferencesAdapter(settingsStore: settingsStore)
+    let viewModel = AppShellViewModel(adapter: adapter)
+
+    await viewModel.refresh()
+    var settings = viewModel.snapshot.settings
+    settings.microphoneDeviceID = "mic-2"
+    settings.audioPreset = .high
+
+    viewModel.updateSettings(settings)
+
+    let persistedSettings = try settingsStore.load().recording
+    #expect(persistedSettings.microphoneDeviceID == "mic-2")
+    #expect(persistedSettings.audioPreset == .high)
+    #expect(viewModel.snapshot.selectedMicrophoneID == "mic-2")
+    #expect(viewModel.snapshot.selectedMicrophone.title == "Studio Microphone")
+    #expect(viewModel.snapshot.settings.audioPreset == .high)
+}
+
+@MainActor
+@Test func viewModelSettingsSaveFailureKeepsSnapshotSettingsUnchangedAndShowsError() async {
+    let settingsDirectory = temporarySettingsDirectory()
+    let settingsStore = SettingsStore(settingsDirectory: settingsDirectory)
+    let adapter = editablePreferencesAdapter(settingsStore: settingsStore)
+    let viewModel = AppShellViewModel(adapter: adapter)
+
+    await viewModel.refresh()
+    let originalSnapshot = viewModel.snapshot
+    try? FileManager.default.removeItem(at: settingsDirectory)
+    try? Data().write(to: settingsDirectory)
+
+    var settings = viewModel.snapshot.settings
+    settings.outputFormat = .mov
+    settings.videoCodec = .hevc
+    settings.frameRate = .fps60
+    settings.qualityPreset = .high
+    viewModel.updateSettings(settings)
+
+    #expect(viewModel.snapshot.settings == originalSnapshot.settings)
+    #expect(viewModel.snapshot.selectedTarget == originalSnapshot.selectedTarget)
+    #expect(viewModel.snapshot.selectedMicrophoneID == originalSnapshot.selectedMicrophoneID)
+    #expect(viewModel.snapshot.errorMessage?.isEmpty == false)
+}
+
+@MainActor
 @Test func viewModelRefreshesFromAdapterSnapshot() async {
     let adapter = OpenRecAppCoreAdapter(
         settingsStore: SettingsStore(settingsDirectory: temporarySettingsDirectory()),
@@ -536,6 +633,40 @@ private func awaitingSaveAdapter(
 
     #expect(viewModel.snapshot.selectedTarget.source == .display(DisplayID(rawValue: 2)))
     #expect(viewModel.snapshot.selectedTarget.title == "External Display")
+}
+
+@MainActor
+private func editablePreferencesAdapter(settingsStore: SettingsStore) -> OpenRecAppCoreAdapter {
+    OpenRecAppCoreAdapter(
+        settingsStore: settingsStore,
+        captureSourceProvider: InMemoryCaptureSourceProvider(
+            displays: [
+                DisplaySourceMetadata(
+                    id: DisplayID(rawValue: 1),
+                    name: "Main Display",
+                    pixelSize: CGSize(width: 1920, height: 1080),
+                    isAvailable: true
+                )
+            ],
+            windows: [
+                WindowSourceMetadata(
+                    id: WindowID(rawValue: 7),
+                    title: "Document",
+                    owningApplicationName: "Pages",
+                    pixelSize: CGSize(width: 1200, height: 900),
+                    isAvailable: true
+                )
+            ]
+        ),
+        audioDeviceProvider: InMemoryAudioDeviceProvider(devices: [
+            MicrophoneDevice(id: "mic-1", name: "Built-in Microphone", isDefault: true),
+            MicrophoneDevice(id: "mic-2", name: "Studio Microphone", isDefault: false)
+        ]),
+        permissionChecker: PermissionChecker(provider: InMemoryPermissionStatusProvider(
+            statuses: Dictionary(uniqueKeysWithValues: PermissionKind.allCases.map { ($0, .granted) })
+        )),
+        hotkeyManager: HotkeyManager(registry: InMemoryHotkeyRegistry())
+    )
 }
 
 private func temporarySettingsDirectory() -> URL {
