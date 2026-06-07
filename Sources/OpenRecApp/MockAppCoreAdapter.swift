@@ -8,6 +8,10 @@ final class MockAppCoreAdapter: AppShellAdapter {
         self.snapshot = initialSnapshot
     }
 
+    func refresh() async -> AppShellSnapshot {
+        snapshot
+    }
+
     func startRecording() -> AppShellSnapshot {
         guard snapshot.status == .ready else { return snapshot }
         snapshot.status = .recording

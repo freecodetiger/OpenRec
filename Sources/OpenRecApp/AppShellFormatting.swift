@@ -102,11 +102,12 @@ struct PermissionDisplayItem {
 
     static func items(for snapshot: AppShellSnapshot) -> [PermissionDisplayItem] {
         PermissionKind.allCases.map { kind in
-            PermissionDisplayItem(
+            let status = snapshot.permissionStatuses[kind] ?? .unknown
+            return PermissionDisplayItem(
                 kind: kind,
                 title: kind.title,
                 reason: kind.reason,
-                isGranted: !snapshot.requiredPermissions.contains(kind)
+                isGranted: status == .granted
             )
         }
     }

@@ -1,9 +1,11 @@
 import Foundation
 import OpenRecCore
 
+@MainActor
 protocol AppShellAdapter: AnyObject {
     var snapshot: AppShellSnapshot { get }
 
+    func refresh() async -> AppShellSnapshot
     func startRecording() -> AppShellSnapshot
     func stopRecording() -> AppShellSnapshot
     func selectMode(_ mode: CaptureMode) -> AppShellSnapshot
@@ -12,6 +14,7 @@ protocol AppShellAdapter: AnyObject {
     func selectScenario(_ snapshot: AppShellSnapshot) -> AppShellSnapshot
 }
 
+@MainActor
 final class AppShellViewModel: ObservableObject {
     @Published private(set) var snapshot: AppShellSnapshot
 
@@ -49,6 +52,11 @@ final class AppShellViewModel: ObservableObject {
 
     var visibleTargets: [SourceTargetOption] {
         snapshot.availableTargets.filter { $0.mode == snapshot.mode }
+    }
+
+    @MainActor
+    func refresh() async {
+        snapshot = await adapter.refresh()
     }
 
     func startRecording() {

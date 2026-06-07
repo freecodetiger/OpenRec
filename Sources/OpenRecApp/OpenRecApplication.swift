@@ -6,12 +6,23 @@ struct OpenRecApplication: App {
     @StateObject private var viewModel: AppShellViewModel
 
     init() {
-        _viewModel = StateObject(wrappedValue: AppShellViewModel(adapter: MockAppCoreAdapter()))
+        let adapter: AppShellAdapter
+        do {
+            adapter = try OpenRecAppCoreAdapter()
+        } catch {
+            var snapshot = AppShellSnapshot.error
+            snapshot.errorMessage = "OpenRec could not load local settings."
+            adapter = MockAppCoreAdapter(initialSnapshot: snapshot)
+        }
+        _viewModel = StateObject(wrappedValue: AppShellViewModel(adapter: adapter))
     }
 
     var body: some Scene {
         MenuBarExtra {
             MenuBarPopoverView(viewModel: viewModel)
+                .task {
+                    await viewModel.refresh()
+                }
         } label: {
             Label("OpenRec", systemImage: viewModel.menuBarSymbolName)
         }
