@@ -65,3 +65,21 @@ public final class InMemoryHotkeyRegistry: HotkeyRegistry, @unchecked Sendable {
         registeredHotkeys.removeAll { $0 == hotkey }
     }
 }
+
+#if os(macOS)
+public final class SystemHotkeyRegistry: HotkeyRegistry, @unchecked Sendable {
+    public static let unimplementedRegistrationMessage = "System hotkey registration is not implemented yet"
+
+    public init() {}
+
+    public func contains(_ hotkey: Hotkey) -> Bool {
+        false
+    }
+
+    public func register(_ hotkey: Hotkey) throws {
+        throw HotkeyRegistrationError.registrationFailed(Self.unimplementedRegistrationMessage)
+    }
+
+    public func unregister(_ hotkey: Hotkey) {}
+}
+#endif
