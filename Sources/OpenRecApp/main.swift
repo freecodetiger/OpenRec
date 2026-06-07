@@ -1,0 +1,4 @@
+import OpenRecCore
+
+print("OpenRec")
+
