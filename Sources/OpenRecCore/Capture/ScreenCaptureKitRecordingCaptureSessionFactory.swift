@@ -15,18 +15,22 @@ public protocol RecordingCaptureSessionFactory: Sendable {
 public struct ScreenCaptureKitRecordingCaptureSessionFactory: RecordingCaptureSessionFactory {
     private let shareableContentProvider: any ScreenCaptureKitShareableContentProviding
     private let streamBuilder: any ScreenCaptureKitStreamBuilding
+    private let supportsMicrophoneOutput: Bool
 
     public init() {
         self.shareableContentProvider = ScreenCaptureKitSystemShareableContentProvider()
         self.streamBuilder = ScreenCaptureKitSystemStreamBuilder()
+        self.supportsMicrophoneOutput = ScreenCaptureKitStreamConfiguration.supportsMicrophoneOutput
     }
 
     init(
         shareableContentProvider: any ScreenCaptureKitShareableContentProviding,
-        streamBuilder: any ScreenCaptureKitStreamBuilding
+        streamBuilder: any ScreenCaptureKitStreamBuilding,
+        supportsMicrophoneOutput: Bool = ScreenCaptureKitStreamConfiguration.supportsMicrophoneOutput
     ) {
         self.shareableContentProvider = shareableContentProvider
         self.streamBuilder = streamBuilder
+        self.supportsMicrophoneOutput = supportsMicrophoneOutput
     }
 
     public func startCapture(
@@ -34,7 +38,8 @@ public struct ScreenCaptureKitRecordingCaptureSessionFactory: RecordingCaptureSe
         writer: any RecordingOutputWriter
     ) throws -> any RecordingCaptureSession {
         let streamConfiguration = try ScreenCaptureKitStreamConfiguration(
-            configuration: configuration
+            configuration: configuration,
+            supportsMicrophoneOutput: supportsMicrophoneOutput
         )
         let filter = try makeFilter(for: configuration.source)
         let outputHandler = ScreenCaptureKitStreamOutputHandler(writer: writer)
@@ -47,6 +52,13 @@ public struct ScreenCaptureKitRecordingCaptureSessionFactory: RecordingCaptureSe
             type: .screen,
             sampleHandlerQueue: DispatchQueue(label: "openrec.screencapturekit.video")
         )
+        if streamConfiguration.captureMicrophone {
+            try stream.addOutput(
+                outputHandler,
+                type: .microphone,
+                sampleHandlerQueue: DispatchQueue(label: "openrec.screencapturekit.microphone")
+            )
+        }
         try stream.startCapture()
 
         return ScreenCaptureKitRecordingCaptureSession(
@@ -156,6 +168,12 @@ struct ScreenCaptureKitFilter: Equatable, @unchecked Sendable {
     }
 }
 
+enum ScreenCaptureKitMicrophoneCapturePolicy: Equatable, Sendable {
+    case notRequested
+    case unavailableOnCurrentOS
+    case enabled
+}
+
 struct ScreenCaptureKitStreamConfiguration: Equatable, Sendable {
     var width: Int
     var height: Int
@@ -163,8 +181,19 @@ struct ScreenCaptureKitStreamConfiguration: Equatable, Sendable {
     var showsCursor: Bool
     var capturesAudio: Bool
     var captureMicrophone: Bool
+    var microphoneCapturePolicy: ScreenCaptureKitMicrophoneCapturePolicy
 
     init(configuration: ResolvedRecordingConfiguration) throws {
+        try self.init(
+            configuration: configuration,
+            supportsMicrophoneOutput: Self.supportsMicrophoneOutput
+        )
+    }
+
+    init(
+        configuration: ResolvedRecordingConfiguration,
+        supportsMicrophoneOutput: Bool
+    ) throws {
         guard configuration.pixelSize.width.isFinite,
               configuration.pixelSize.height.isFinite,
               configuration.pixelSize.width > 0,
@@ -189,7 +218,22 @@ struct ScreenCaptureKitStreamConfiguration: Equatable, Sendable {
         )
         self.showsCursor = configuration.includeCursor
         self.capturesAudio = false
-        self.captureMicrophone = false
+        self.captureMicrophone = configuration.microphoneDeviceID != nil && supportsMicrophoneOutput
+        self.microphoneCapturePolicy = if configuration.microphoneDeviceID == nil {
+            .notRequested
+        } else if supportsMicrophoneOutput {
+            .enabled
+        } else {
+            .unavailableOnCurrentOS
+        }
+    }
+
+    static var supportsMicrophoneOutput: Bool {
+        if #available(macOS 15.0, *) {
+            true
+        } else {
+            false
+        }
     }
 
     fileprivate func makeSCStreamConfiguration() -> SCStreamConfiguration {
@@ -225,7 +269,7 @@ enum ScreenCaptureKitOutputType: Equatable, Sendable {
         }
     }
 
-    fileprivate var scStreamOutputType: SCStreamOutputType {
+    fileprivate var scStreamOutputType: SCStreamOutputType? {
         switch self {
         case .screen:
             .screen
@@ -235,10 +279,10 @@ enum ScreenCaptureKitOutputType: Equatable, Sendable {
             if #available(macOS 15.0, *) {
                 .microphone
             } else {
-                .audio
+                nil
             }
         case .unsupported:
-            .screen
+            nil
         }
     }
 }
@@ -344,10 +388,16 @@ final class ScreenCaptureKitStreamAdapter: ScreenCaptureKitStream, @unchecked Se
         type: ScreenCaptureKitOutputType,
         sampleHandlerQueue: DispatchQueue?
     ) throws {
+        guard let scStreamOutputType = type.scStreamOutputType else {
+            throw OpenRecError.captureConfigurationInvalid(
+                "ScreenCaptureKit stream output type is unavailable: \(type)."
+            )
+        }
+
         do {
             try stream.addStreamOutput(
                 output,
-                type: type.scStreamOutputType,
+                type: scStreamOutputType,
                 sampleHandlerQueue: sampleHandlerQueue
             )
         } catch {
@@ -388,12 +438,15 @@ final class ScreenCaptureKitStreamOutputHandler: NSObject, SCStreamOutput, @unch
     }
 
     func handle(_ sampleBuffer: CMSampleBuffer, type: ScreenCaptureKitOutputType) {
-        guard type == .screen else {
-            return
-        }
-
         do {
+            switch type {
+            case .screen:
             try writer.appendVideoSampleBuffer(sampleBuffer)
+            case .audio, .microphone:
+                try writer.appendAudioSampleBuffer(sampleBuffer)
+            case .unsupported:
+                return
+            }
         } catch let error as OpenRecError {
             setLastError(error)
         } catch {
