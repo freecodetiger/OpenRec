@@ -42,6 +42,95 @@ import Testing
     #expect(streamBuilder.builtStreams[0].stream.didStopCapture)
 }
 
+@Test func screenCaptureKitStreamConfigurationEnablesOnlyMicrophoneOutputWhenAvailable() throws {
+    let streamConfiguration = try ScreenCaptureKitStreamConfiguration(
+        configuration: resolvedConfiguration(
+            source: .display(DisplayID(rawValue: 42)),
+            microphoneDeviceID: "BuiltInMic"
+        ),
+        supportsMicrophoneOutput: true
+    )
+
+    #expect(streamConfiguration.capturesAudio == false)
+    #expect(streamConfiguration.captureMicrophone == true)
+    #expect(streamConfiguration.microphoneCapturePolicy == .enabled)
+}
+
+@Test func screenCaptureKitStreamConfigurationKeepsMicrophoneDisabledWhenUnavailable() throws {
+    let streamConfiguration = try ScreenCaptureKitStreamConfiguration(
+        configuration: resolvedConfiguration(
+            source: .display(DisplayID(rawValue: 42)),
+            microphoneDeviceID: "BuiltInMic"
+        ),
+        supportsMicrophoneOutput: false
+    )
+
+    #expect(streamConfiguration.capturesAudio == false)
+    #expect(streamConfiguration.captureMicrophone == false)
+    #expect(streamConfiguration.microphoneCapturePolicy == .unavailableOnCurrentOS)
+}
+
+@Test func screenCaptureKitStreamConfigurationDoesNotRequestMicrophoneWithoutConfiguredDevice() throws {
+    let streamConfiguration = try ScreenCaptureKitStreamConfiguration(
+        configuration: resolvedConfiguration(source: .display(DisplayID(rawValue: 42))),
+        supportsMicrophoneOutput: true
+    )
+
+    #expect(streamConfiguration.capturesAudio == false)
+    #expect(streamConfiguration.captureMicrophone == false)
+    #expect(streamConfiguration.microphoneCapturePolicy == .notRequested)
+}
+
+@Test func screenCaptureKitFactoryAddsMicrophoneOutputWhenRequestedAndAvailable() throws {
+    let streamBuilder = SpyScreenCaptureKitStreamBuilder()
+    let factory = ScreenCaptureKitRecordingCaptureSessionFactory(
+        shareableContentProvider: StubScreenCaptureKitShareableContentProvider(
+            displays: [ScreenCaptureKitDisplay(id: DisplayID(rawValue: 42))],
+            windows: []
+        ),
+        streamBuilder: streamBuilder,
+        supportsMicrophoneOutput: true
+    )
+
+    _ = try factory.startCapture(
+        configuration: resolvedConfiguration(
+            source: .display(DisplayID(rawValue: 42)),
+            microphoneDeviceID: "BuiltInMic"
+        ),
+        writer: SpyRecordingOutputWriter(outputURL: URL(filePath: "/tmp/openrec-mic.mp4"))
+    )
+
+    #expect(streamBuilder.builtStreams[0].configuration.capturesAudio == false)
+    #expect(streamBuilder.builtStreams[0].configuration.captureMicrophone == true)
+    #expect(streamBuilder.builtStreams[0].configuration.microphoneCapturePolicy == .enabled)
+    #expect(streamBuilder.builtStreams[0].stream.addedOutputTypes == [.screen, .microphone])
+}
+
+@Test func screenCaptureKitFactoryKeepsVideoOnlyWhenMicrophoneRequestedButUnavailable() throws {
+    let streamBuilder = SpyScreenCaptureKitStreamBuilder()
+    let factory = ScreenCaptureKitRecordingCaptureSessionFactory(
+        shareableContentProvider: StubScreenCaptureKitShareableContentProvider(
+            displays: [ScreenCaptureKitDisplay(id: DisplayID(rawValue: 42))],
+            windows: []
+        ),
+        streamBuilder: streamBuilder,
+        supportsMicrophoneOutput: false
+    )
+
+    _ = try factory.startCapture(
+        configuration: resolvedConfiguration(
+            source: .display(DisplayID(rawValue: 42)),
+            microphoneDeviceID: "BuiltInMic"
+        ),
+        writer: SpyRecordingOutputWriter(outputURL: URL(filePath: "/tmp/openrec-mic-unavailable.mp4"))
+    )
+
+    #expect(streamBuilder.builtStreams[0].configuration.capturesAudio == false)
+    #expect(streamBuilder.builtStreams[0].configuration.captureMicrophone == false)
+    #expect(streamBuilder.builtStreams[0].configuration.microphoneCapturePolicy == .unavailableOnCurrentOS)
+    #expect(streamBuilder.builtStreams[0].stream.addedOutputTypes == [.screen])
+}
+
 @Test func screenCaptureKitFactoryBuildsWindowFilter() throws {
     let streamBuilder = SpyScreenCaptureKitStreamBuilder()
     let factory = ScreenCaptureKitRecordingCaptureSessionFactory(
@@ -78,26 +167,26 @@ import Testing
     }
 }
 
-@Test func screenCaptureKitOutputHandlerAppendsOnlyScreenSamples() throws {
+@Test func screenCaptureKitOutputHandlerRoutesSamplesBySupportedOutputType() throws {
     let writer = SpyRecordingOutputWriter(outputURL: URL(filePath: "/tmp/openrec-output.mp4"))
     let handler = ScreenCaptureKitStreamOutputHandler(writer: writer)
     let sampleBuffer = try emptySampleBuffer()
 
     handler.handle(sampleBuffer, type: .screen)
     handler.handle(sampleBuffer, type: .audio)
-    if #available(macOS 15.0, *) {
-        handler.handle(sampleBuffer, type: .microphone)
-    }
+    handler.handle(sampleBuffer, type: .microphone)
+    handler.handle(sampleBuffer, type: .unsupported)
 
     #expect(writer.videoAppendCount == 1)
-    #expect(writer.audioAppendCount == 0)
+    #expect(writer.audioAppendCount == 2)
 }
 
 private func resolvedConfiguration(
     source: CaptureSource,
     pixelSize: CGSize = CGSize(width: 1920, height: 1080),
     frameRate: Int = 30,
-    includeCursor: Bool = true
+    includeCursor: Bool = true,
+    microphoneDeviceID: String? = nil
 ) -> ResolvedRecordingConfiguration {
     ResolvedRecordingConfiguration(
         source: source,
@@ -107,7 +196,7 @@ private func resolvedConfiguration(
         bitrate: 7_464_960,
         frameRate: frameRate,
         includeCursor: includeCursor,
-        microphoneDeviceID: nil
+        microphoneDeviceID: microphoneDeviceID
     )
 }
 
