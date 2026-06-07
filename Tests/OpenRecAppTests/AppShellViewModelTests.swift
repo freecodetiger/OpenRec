@@ -208,7 +208,11 @@ import Foundation
 @Test func productionAdapterSaveRetryAndDiscardRespectAwaitingSaveBoundary() async {
     let pendingURL = URL(filePath: "/tmp/openrec-finalized.mp4")
     let finalizer = NoOpTemporaryRecordingFinalizer()
-    let adapter = awaitingSaveAdapter(pendingURL: pendingURL, finalizer: finalizer)
+    let adapter = awaitingSaveAdapter(
+        pendingURL: pendingURL,
+        finalizer: finalizer,
+        savePanel: StubRecordingSavePanel(destinationURL: URL(filePath: "/tmp/openrec-saved.mp4"))
+    )
 
     _ = await adapter.refresh()
     let retrySnapshot = adapter.retrySave()
@@ -230,9 +234,118 @@ import Foundation
 }
 
 @MainActor
+@Test func productionAdapterSaveRecordingMovesPendingFileBeforeMarkSaved() async {
+    let pendingURL = URL(filePath: "/tmp/openrec-finalized.mp4")
+    let destinationURL = URL(filePath: "/Users/test/Desktop/openrec-finalized.mp4")
+    let savePanel = StubRecordingSavePanel(destinationURL: destinationURL)
+    let fileMover = SpyRecordingFileMover()
+    let adapter = awaitingSaveAdapter(
+        pendingURL: pendingURL,
+        savePanel: savePanel,
+        fileMover: fileMover
+    )
+
+    _ = await adapter.refresh()
+    let snapshot = adapter.saveRecording()
+
+    #expect(savePanel.defaultFileNames == ["openrec-finalized.mp4"])
+    #expect(fileMover.moves == [
+        RecordedFileMove(sourceURL: pendingURL, destinationURL: destinationURL)
+    ])
+    #expect(snapshot.status == .ready)
+    #expect(snapshot.pendingSaveURL == nil)
+    #expect(snapshot.errorMessage == nil)
+}
+
+@MainActor
+@Test func productionAdapterSaveRecordingCancelKeepsAwaitingSaveAndPendingURL() async {
+    let pendingURL = URL(filePath: "/tmp/openrec-finalized.mov")
+    let savePanel = StubRecordingSavePanel(destinationURL: nil)
+    let fileMover = SpyRecordingFileMover()
+    let adapter = awaitingSaveAdapter(
+        pendingURL: pendingURL,
+        savePanel: savePanel,
+        fileMover: fileMover
+    )
+
+    _ = await adapter.refresh()
+    let snapshot = adapter.saveRecording()
+
+    #expect(savePanel.defaultFileNames == ["openrec-finalized.mov"])
+    #expect(fileMover.moves.isEmpty)
+    #expect(snapshot.status == .awaitingSave)
+    #expect(snapshot.pendingSaveURL == pendingURL)
+    #expect(snapshot.errorMessage == "Choose a save location or discard the recording.")
+}
+
+@MainActor
+@Test func productionAdapterSaveRecordingMoveFailureDoesNotMarkSavedAndShowsError() async {
+    let pendingURL = URL(filePath: "/tmp/openrec-finalized.mp4")
+    let destinationURL = URL(filePath: "/Users/test/Desktop/openrec-finalized.mp4")
+    let savePanel = StubRecordingSavePanel(destinationURL: destinationURL)
+    let fileMover = SpyRecordingFileMover(error: TestSaveMoveError())
+    let adapter = awaitingSaveAdapter(
+        pendingURL: pendingURL,
+        savePanel: savePanel,
+        fileMover: fileMover
+    )
+
+    _ = await adapter.refresh()
+    let snapshot = adapter.saveRecording()
+
+    #expect(fileMover.moves == [
+        RecordedFileMove(sourceURL: pendingURL, destinationURL: destinationURL)
+    ])
+    #expect(snapshot.status == .awaitingSave)
+    #expect(snapshot.pendingSaveURL == pendingURL)
+    #expect(snapshot.errorMessage?.isEmpty == false)
+}
+
+@MainActor
+@Test func productionAdapterSaveRecordingIsNoOpOutsideAwaitingSave() async {
+    let savePanel = StubRecordingSavePanel(destinationURL: URL(filePath: "/Users/test/Desktop/openrec-finalized.mp4"))
+    let fileMover = SpyRecordingFileMover()
+    let adapter = OpenRecAppCoreAdapter(
+        settingsStore: SettingsStore(settingsDirectory: temporarySettingsDirectory()),
+        captureSourceProvider: InMemoryCaptureSourceProvider(
+            displays: [
+                DisplaySourceMetadata(
+                    id: DisplayID(rawValue: 1),
+                    name: "Main Display",
+                    pixelSize: CGSize(width: 1920, height: 1080),
+                    isAvailable: true
+                )
+            ],
+            windows: []
+        ),
+        audioDeviceProvider: InMemoryAudioDeviceProvider(devices: [
+            MicrophoneDevice(id: "mic-1", name: "Built-in Microphone", isDefault: true)
+        ]),
+        permissionChecker: PermissionChecker(provider: InMemoryPermissionStatusProvider(
+            statuses: Dictionary(uniqueKeysWithValues: PermissionKind.allCases.map { ($0, .granted) })
+        )),
+        hotkeyManager: HotkeyManager(registry: InMemoryHotkeyRegistry()),
+        savePanel: savePanel,
+        fileMover: fileMover
+    )
+
+    _ = await adapter.refresh()
+    let snapshot = adapter.saveRecording()
+
+    #expect(savePanel.defaultFileNames.isEmpty)
+    #expect(fileMover.moves.isEmpty)
+    #expect(snapshot.status == .ready)
+    #expect(snapshot.pendingSaveURL == nil)
+}
+
+@MainActor
 private func awaitingSaveAdapter(
     pendingURL: URL,
-    finalizer: NoOpTemporaryRecordingFinalizer = NoOpTemporaryRecordingFinalizer()
+    finalizer: NoOpTemporaryRecordingFinalizer = NoOpTemporaryRecordingFinalizer(),
+    savePanel: StubRecordingSavePanel = StubRecordingSavePanel(
+        destinationURL: URL(filePath: "/Users/test/Desktop/openrec-finalized.mp4")
+    ),
+    fileMover: SpyRecordingFileMover = SpyRecordingFileMover()
 ) -> OpenRecAppCoreAdapter {
     OpenRecAppCoreAdapter(
         settingsStore: SettingsStore(settingsDirectory: temporarySettingsDirectory()),
@@ -260,7 +373,9 @@ private func awaitingSaveAdapter(
             engine: NoOpRecordingEngine(),
             finalizer: finalizer,
             initialState: .awaitingSave(pendingURL)
-        )
+        ),
+        savePanel: savePanel,
+        fileMover: fileMover
     )
 }
 
@@ -477,3 +592,41 @@ private final class NoOpTemporaryRecordingFinalizer: TemporaryRecordingFinalizin
         discardedURLs.append(url)
     }
 }
+
+private struct RecordedFileMove: Equatable {
+    var sourceURL: URL
+    var destinationURL: URL
+}
+
+@MainActor
+private final class StubRecordingSavePanel: RecordingSavePanelPresenting {
+    private let destinationURL: URL?
+    private(set) var defaultFileNames: [String] = []
+
+    init(destinationURL: URL?) {
+        self.destinationURL = destinationURL
+    }
+
+    func destinationURL(defaultFileName: String) -> URL? {
+        defaultFileNames.append(defaultFileName)
+        return destinationURL
+    }
+}
+
+private final class SpyRecordingFileMover: RecordingFileMoving {
+    private let error: (any Error)?
+    private(set) var moves: [RecordedFileMove] = []
+
+    init(error: (any Error)? = nil) {
+        self.error = error
+    }
+
+    func moveRecording(from sourceURL: URL, to destinationURL: URL) throws {
+        moves.append(RecordedFileMove(sourceURL: sourceURL, destinationURL: destinationURL))
+        if let error {
+            throw error
+        }
+    }
+}
+
+private struct TestSaveMoveError: Error {}
