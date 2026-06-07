@@ -77,6 +77,35 @@ struct AppShellSnapshot: Equatable, Sendable {
     }
 }
 
+struct SourceSelectionDraft: Equatable, Sendable {
+    private let availableTargets: [SourceTargetOption]
+    private(set) var mode: CaptureMode
+    private(set) var selectedTargetID: String
+
+    init(snapshot: AppShellSnapshot) {
+        self.availableTargets = snapshot.availableTargets
+        self.mode = snapshot.mode
+        self.selectedTargetID = snapshot.selectedTarget.id
+    }
+
+    var visibleTargets: [SourceTargetOption] {
+        availableTargets.filter { $0.mode == mode }
+    }
+
+    mutating func selectMode(_ mode: CaptureMode) {
+        self.mode = mode
+        if !visibleTargets.contains(where: { $0.id == selectedTargetID }),
+           let firstTarget = visibleTargets.first {
+            selectedTargetID = firstTarget.id
+        }
+    }
+
+    mutating func selectTarget(id: String) {
+        guard availableTargets.contains(where: { $0.id == id }) else { return }
+        selectedTargetID = id
+    }
+}
+
 extension AppShellSnapshot {
     static let displayTarget = SourceTargetOption(
         id: "display-1",

@@ -6,6 +6,8 @@ final class MockAppCoreAdapter: AppShellAdapter {
     private(set) var saveRecordingCallCount = 0
     private(set) var retrySaveCallCount = 0
     private(set) var discardRecordingCallCount = 0
+    private(set) var selectModes: [CaptureMode] = []
+    private(set) var selectTargetIDs: [String] = []
 
     init(initialSnapshot: AppShellSnapshot = .ready) {
         self.snapshot = initialSnapshot
@@ -31,6 +33,7 @@ final class MockAppCoreAdapter: AppShellAdapter {
     }
 
     func selectMode(_ mode: CaptureMode) -> AppShellSnapshot {
+        selectModes.append(mode)
         snapshot.mode = mode
         if let target = snapshot.availableTargets.first(where: { $0.mode == mode }) {
             snapshot.selectedTarget = target
@@ -39,6 +42,7 @@ final class MockAppCoreAdapter: AppShellAdapter {
     }
 
     func selectTarget(id: String) -> AppShellSnapshot {
+        selectTargetIDs.append(id)
         if let target = snapshot.availableTargets.first(where: { $0.id == id }) {
             snapshot.selectedTarget = target
             snapshot.mode = target.mode

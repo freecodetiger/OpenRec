@@ -4,11 +4,13 @@ public final class ScreenCaptureRecordingEngine: RecordingEngine, @unchecked Sen
     private struct ActiveRecording {
         var writer: any RecordingOutputWriter
         var captureSession: any RecordingCaptureSession
+        var microphoneCaptureSession: (any MicrophoneCaptureSession)?
     }
 
     private let outputDirectory: URL
     private let writerFactory: any RecordingOutputWriterFactory
     private let captureSessionFactory: any RecordingCaptureSessionFactory
+    private let microphoneCaptureSessionFactory: any MicrophoneCaptureSessionFactory
     private let idProvider: @Sendable () -> UUID
     private let fileManager: FileManager
     private let lock = NSLock()
@@ -18,12 +20,14 @@ public final class ScreenCaptureRecordingEngine: RecordingEngine, @unchecked Sen
         outputDirectory: URL = FileManager.default.temporaryDirectory,
         writerFactory: any RecordingOutputWriterFactory = AVAssetRecordingOutputWriterFactory(),
         captureSessionFactory: any RecordingCaptureSessionFactory = ScreenCaptureKitRecordingCaptureSessionFactory(),
+        microphoneCaptureSessionFactory: any MicrophoneCaptureSessionFactory = AVFoundationMicrophoneCaptureSessionFactory(),
         idProvider: @escaping @Sendable () -> UUID = { UUID() },
         fileManager: FileManager = .default
     ) {
         self.outputDirectory = outputDirectory
         self.writerFactory = writerFactory
         self.captureSessionFactory = captureSessionFactory
+        self.microphoneCaptureSessionFactory = microphoneCaptureSessionFactory
         self.idProvider = idProvider
         self.fileManager = fileManager
     }
@@ -61,6 +65,10 @@ public final class ScreenCaptureRecordingEngine: RecordingEngine, @unchecked Sen
                 configuration: configuration,
                 writer: createdWriter
             )
+            let microphoneCaptureSession = try startMicrophoneCaptureIfNeeded(
+                configuration: configuration,
+                writer: createdWriter
+            )
 
             let session = RecordingSession(
                 id: sessionID,
@@ -71,7 +79,8 @@ public final class ScreenCaptureRecordingEngine: RecordingEngine, @unchecked Sen
             lock.withLock {
                 activeRecordings[sessionID] = ActiveRecording(
                     writer: createdWriter,
-                    captureSession: captureSession
+                    captureSession: captureSession,
+                    microphoneCaptureSession: microphoneCaptureSession
                 )
             }
 
@@ -97,6 +106,7 @@ public final class ScreenCaptureRecordingEngine: RecordingEngine, @unchecked Sen
 
         do {
             try activeRecording.captureSession.stop()
+            try activeRecording.microphoneCaptureSession?.stop()
             return try activeRecording.writer.finish()
         } catch {
             try? fileManager.removeItem(at: session.temporaryFileURL)
@@ -110,6 +120,20 @@ public final class ScreenCaptureRecordingEngine: RecordingEngine, @unchecked Sen
     private func temporaryRecordingURL(fileExtension: String, id: UUID) -> URL {
         outputDirectory.appending(
             path: "openrec-\(id.uuidString.lowercased()).\(fileExtension)"
+        )
+    }
+
+    private func startMicrophoneCaptureIfNeeded(
+        configuration: ResolvedRecordingConfiguration,
+        writer: any RecordingOutputWriter
+    ) throws -> (any MicrophoneCaptureSession)? {
+        guard let microphoneDeviceID = configuration.microphoneDeviceID else {
+            return nil
+        }
+
+        return try microphoneCaptureSessionFactory.startMicrophoneCapture(
+            deviceID: microphoneDeviceID,
+            writer: writer
         )
     }
 

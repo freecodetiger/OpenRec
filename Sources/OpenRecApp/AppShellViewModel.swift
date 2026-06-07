@@ -100,6 +100,15 @@ final class AppShellViewModel: ObservableObject {
         snapshot = adapter.selectTarget(id: id)
     }
 
+    func applySourceSelection(_ draft: SourceSelectionDraft) {
+        if draft.mode != snapshot.mode {
+            snapshot = adapter.selectMode(draft.mode)
+        }
+        if draft.selectedTargetID != snapshot.selectedTarget.id {
+            snapshot = adapter.selectTarget(id: draft.selectedTargetID)
+        }
+    }
+
     func selectMicrophone(id: String) {
         guard id != snapshot.selectedMicrophoneID else { return }
         snapshot = adapter.selectMicrophone(id: id)

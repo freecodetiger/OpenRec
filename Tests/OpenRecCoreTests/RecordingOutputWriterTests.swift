@@ -112,12 +112,19 @@ import Testing
 @Test func screenCaptureRecordingEngineStartsAndStopsCaptureSessionWhenFactoriesSucceed() throws {
     let captureSession = StubRecordingCaptureSession()
     let captureSessionFactory = SuccessfulRecordingCaptureSessionFactory(captureSession: captureSession)
+    let microphoneSession = StubMicrophoneCaptureSession()
+    let microphoneSessionFactory = SuccessfulMicrophoneCaptureSessionFactory(microphoneSession: microphoneSession)
     let engine = ScreenCaptureRecordingEngine(
         writerFactory: SuccessfulRecordingOutputWriterFactory(),
         captureSessionFactory: captureSessionFactory,
+        microphoneCaptureSessionFactory: microphoneSessionFactory,
         idProvider: { UUID(uuidString: "00000000-0000-0000-0000-000000000123")! }
     )
-    let configuration = resolvedConfiguration(outputFormat: .mp4, videoCodec: .h264)
+    let configuration = resolvedConfiguration(
+        outputFormat: .mp4,
+        videoCodec: .h264,
+        microphoneDeviceID: "BuiltInMic"
+    )
 
     let session = try engine.start(configuration: configuration)
     let finalizedURL = try engine.stop(session: session)
@@ -126,7 +133,56 @@ import Testing
     #expect(finalizedURL == session.temporaryFileURL)
     #expect(captureSessionFactory.startedConfigurations == [configuration])
     #expect(captureSessionFactory.writers.count == 1)
+    #expect(microphoneSessionFactory.startedDeviceIDs == ["BuiltInMic"])
+    #expect(microphoneSessionFactory.writers.count == 1)
     #expect(captureSession.didStop)
+    #expect(microphoneSession.didStop)
+}
+
+@Test func screenCaptureRecordingEngineDoesNotStartMicrophoneCaptureWithoutMicrophoneDevice() throws {
+    let microphoneSessionFactory = SuccessfulMicrophoneCaptureSessionFactory(
+        microphoneSession: StubMicrophoneCaptureSession()
+    )
+    let engine = ScreenCaptureRecordingEngine(
+        writerFactory: SuccessfulRecordingOutputWriterFactory(),
+        captureSessionFactory: SuccessfulRecordingCaptureSessionFactory(captureSession: StubRecordingCaptureSession()),
+        microphoneCaptureSessionFactory: microphoneSessionFactory
+    )
+
+    _ = try engine.start(configuration: resolvedConfiguration(outputFormat: .mp4, videoCodec: .h264))
+
+    #expect(microphoneSessionFactory.startedDeviceIDs.isEmpty)
+}
+
+@Test func screenCaptureRecordingEngineCleansTemporaryFileWhenMicrophoneCaptureFails() throws {
+    let directory = try temporaryDirectory()
+    let engine = ScreenCaptureRecordingEngine(
+        outputDirectory: directory,
+        writerFactory: SuccessfulRecordingOutputWriterFactory(),
+        captureSessionFactory: SuccessfulRecordingCaptureSessionFactory(captureSession: StubRecordingCaptureSession()),
+        microphoneCaptureSessionFactory: FailingMicrophoneCaptureSessionFactory(
+            error: .microphoneUnavailable("missing-mic")
+        ),
+        idProvider: { UUID(uuidString: "00000000-0000-0000-0000-000000000124")! }
+    )
+    let configuration = resolvedConfiguration(
+        outputFormat: .mp4,
+        videoCodec: .h264,
+        microphoneDeviceID: "missing-mic"
+    )
+
+    let expectedURL = directory.appending(
+        path: "openrec-00000000-0000-0000-0000-000000000124.mp4"
+    )
+
+    #expect(throws: RecordingEngineFailure(
+        error: .microphoneUnavailable("missing-mic"),
+        temporaryFileURL: expectedURL
+    )) {
+        _ = try engine.start(configuration: configuration)
+    }
+
+    #expect(!FileManager.default.fileExists(atPath: expectedURL.path(percentEncoded: false)))
 }
 
 @Test func screenCaptureRecordingEngineRejectsStopForUnknownSession() {
@@ -146,7 +202,8 @@ import Testing
 
 private func resolvedConfiguration(
     outputFormat: OutputFormat,
-    videoCodec: VideoCodec
+    videoCodec: VideoCodec,
+    microphoneDeviceID: String? = nil
 ) -> ResolvedRecordingConfiguration {
     ResolvedRecordingConfiguration(
         source: .display(DisplayID(rawValue: 1)),
@@ -156,7 +213,7 @@ private func resolvedConfiguration(
         bitrate: 7_464_960,
         frameRate: 30,
         includeCursor: true,
-        microphoneDeviceID: nil
+        microphoneDeviceID: microphoneDeviceID
     )
 }
 
@@ -249,6 +306,14 @@ private final class StubRecordingCaptureSession: RecordingCaptureSession, @unche
     }
 }
 
+private final class StubMicrophoneCaptureSession: MicrophoneCaptureSession, @unchecked Sendable {
+    private(set) var didStop = false
+
+    func stop() throws {
+        didStop = true
+    }
+}
+
 private final class SuccessfulRecordingCaptureSessionFactory: RecordingCaptureSessionFactory, @unchecked Sendable {
     private let captureSession: StubRecordingCaptureSession
     private(set) var startedConfigurations: [ResolvedRecordingConfiguration] = []
@@ -265,6 +330,36 @@ private final class SuccessfulRecordingCaptureSessionFactory: RecordingCaptureSe
         startedConfigurations.append(configuration)
         writers.append(writer)
         return captureSession
+    }
+}
+
+private final class SuccessfulMicrophoneCaptureSessionFactory: MicrophoneCaptureSessionFactory, @unchecked Sendable {
+    private let microphoneSession: StubMicrophoneCaptureSession
+    private(set) var startedDeviceIDs: [String] = []
+    private(set) var writers: [any RecordingOutputWriter] = []
+
+    init(microphoneSession: StubMicrophoneCaptureSession) {
+        self.microphoneSession = microphoneSession
+    }
+
+    func startMicrophoneCapture(
+        deviceID: String,
+        writer: any RecordingOutputWriter
+    ) throws -> any MicrophoneCaptureSession {
+        startedDeviceIDs.append(deviceID)
+        writers.append(writer)
+        return microphoneSession
+    }
+}
+
+private struct FailingMicrophoneCaptureSessionFactory: MicrophoneCaptureSessionFactory {
+    var error: OpenRecError
+
+    func startMicrophoneCapture(
+        deviceID: String,
+        writer: any RecordingOutputWriter
+    ) throws -> any MicrophoneCaptureSession {
+        throw error
     }
 }
 
