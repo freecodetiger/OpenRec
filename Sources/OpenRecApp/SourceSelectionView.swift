@@ -5,6 +5,7 @@ struct SourceSelectionView: View {
     @ObservedObject var viewModel: AppShellViewModel
     @Environment(\.dismiss) private var dismiss
     @State private var draft: SourceSelectionDraft
+    @State private var overlayPresenter = WindowSelectionOverlayPresenter()
 
     init(viewModel: AppShellViewModel) {
         self.viewModel = viewModel
@@ -20,12 +21,30 @@ struct SourceSelectionView: View {
                 .foregroundStyle(.secondary)
 
             modePicker
+            if draft.mode == .window {
+                overlayAction
+            }
             targetList
             actions
         }
         .padding(24)
         .onChange(of: viewModel.snapshot) { _, snapshot in
             draft = SourceSelectionDraft(snapshot: snapshot)
+        }
+        .onAppear {
+            if draft.mode == .window {
+                openWindowSelectionOverlay()
+            }
+        }
+        .onChange(of: draft.mode) { _, mode in
+            if mode == .window {
+                openWindowSelectionOverlay()
+            } else {
+                overlayPresenter.dismiss()
+            }
+        }
+        .onDisappear {
+            overlayPresenter.dismiss()
         }
     }
 
@@ -38,6 +57,17 @@ struct SourceSelectionView: View {
             Text("Window Recording").tag(CaptureMode.window)
         }
         .pickerStyle(.segmented)
+    }
+
+    private var overlayAction: some View {
+        Button {
+            openWindowSelectionOverlay()
+        } label: {
+            Label("Select Window on Screen", systemImage: "macwindow.badge.plus")
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.borderedProminent)
+        .disabled(draft.visibleTargets.isEmpty)
     }
 
     private var targetList: some View {
@@ -87,5 +117,19 @@ struct SourceSelectionView: View {
             .keyboardShortcut(.defaultAction)
             .disabled(!draft.canApply)
         }
+    }
+
+    private func openWindowSelectionOverlay() {
+        guard !draft.visibleTargets.isEmpty else { return }
+
+        overlayPresenter.present(
+            targets: draft.visibleTargets,
+            onSelect: { targetID in
+                draft.selectTarget(id: targetID)
+                viewModel.applySourceSelection(draft)
+                dismiss()
+            },
+            onCancel: {}
+        )
     }
 }
