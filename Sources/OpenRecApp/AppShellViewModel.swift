@@ -1,0 +1,86 @@
+import Foundation
+import OpenRecCore
+
+protocol AppShellAdapter: AnyObject {
+    var snapshot: AppShellSnapshot { get }
+
+    func startRecording() -> AppShellSnapshot
+    func stopRecording() -> AppShellSnapshot
+    func selectMode(_ mode: CaptureMode) -> AppShellSnapshot
+    func selectTarget(id: String) -> AppShellSnapshot
+    func selectMicrophone(id: String) -> AppShellSnapshot
+    func selectScenario(_ snapshot: AppShellSnapshot) -> AppShellSnapshot
+}
+
+final class AppShellViewModel: ObservableObject {
+    @Published private(set) var snapshot: AppShellSnapshot
+
+    private let adapter: AppShellAdapter
+
+    init(adapter: AppShellAdapter) {
+        self.adapter = adapter
+        self.snapshot = adapter.snapshot
+    }
+
+    var canStartRecording: Bool {
+        snapshot.status == .ready
+    }
+
+    var isRecording: Bool {
+        snapshot.status == .recording
+    }
+
+    var primaryActionTitle: String {
+        isRecording ? "Stop Recording" : "Start Recording"
+    }
+
+    var menuBarSymbolName: String {
+        switch snapshot.status {
+        case .ready:
+            "record.circle"
+        case .recording:
+            "stop.circle.fill"
+        case .permissionRequired:
+            "exclamationmark.triangle.fill"
+        case .error:
+            "xmark.octagon.fill"
+        }
+    }
+
+    var visibleTargets: [SourceTargetOption] {
+        snapshot.availableTargets.filter { $0.mode == snapshot.mode }
+    }
+
+    func startRecording() {
+        guard canStartRecording else { return }
+        snapshot = adapter.startRecording()
+    }
+
+    func stopRecording() {
+        guard isRecording else { return }
+        snapshot = adapter.stopRecording()
+    }
+
+    func toggleRecording() {
+        isRecording ? stopRecording() : startRecording()
+    }
+
+    func selectMode(_ mode: CaptureMode) {
+        guard mode != snapshot.mode else { return }
+        snapshot = adapter.selectMode(mode)
+    }
+
+    func selectTarget(id: String) {
+        guard id != snapshot.selectedTarget.id else { return }
+        snapshot = adapter.selectTarget(id: id)
+    }
+
+    func selectMicrophone(id: String) {
+        guard id != snapshot.selectedMicrophoneID else { return }
+        snapshot = adapter.selectMicrophone(id: id)
+    }
+
+    func selectScenario(_ scenario: AppShellSnapshot) {
+        snapshot = adapter.selectScenario(scenario)
+    }
+}
