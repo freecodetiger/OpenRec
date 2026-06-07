@@ -1,3 +1,7 @@
+#if os(macOS)
+import AVFoundation
+#endif
+
 public enum PermissionStatus: String, Codable, Equatable, Sendable {
     case granted
     case denied
@@ -47,3 +51,52 @@ public struct InMemoryPermissionStatusProvider: PermissionStatusProvider {
         statuses[kind] ?? defaultStatus
     }
 }
+
+#if os(macOS)
+public struct SystemPermissionStatusProvider: PermissionStatusProvider {
+    private let microphoneAuthorizationStatus: @Sendable () -> AVAuthorizationStatus
+    private let screenRecordingStatus: @Sendable () -> PermissionStatus
+    private let accessibilityStatus: @Sendable () -> PermissionStatus
+    private let inputMonitoringStatus: @Sendable () -> PermissionStatus
+
+    public init(
+        microphoneAuthorizationStatus: @escaping @Sendable () -> AVAuthorizationStatus = {
+            AVCaptureDevice.authorizationStatus(for: .audio)
+        },
+        screenRecordingStatus: @escaping @Sendable () -> PermissionStatus = { .unknown },
+        accessibilityStatus: @escaping @Sendable () -> PermissionStatus = { .notDetermined },
+        inputMonitoringStatus: @escaping @Sendable () -> PermissionStatus = { .notDetermined }
+    ) {
+        self.microphoneAuthorizationStatus = microphoneAuthorizationStatus
+        self.screenRecordingStatus = screenRecordingStatus
+        self.accessibilityStatus = accessibilityStatus
+        self.inputMonitoringStatus = inputMonitoringStatus
+    }
+
+    public func status(for kind: PermissionKind) -> PermissionStatus {
+        switch kind {
+        case .microphone:
+            return Self.permissionStatus(from: microphoneAuthorizationStatus())
+        case .screenRecording:
+            return screenRecordingStatus()
+        case .accessibility:
+            return accessibilityStatus()
+        case .inputMonitoring:
+            return inputMonitoringStatus()
+        }
+    }
+
+    private static func permissionStatus(from status: AVAuthorizationStatus) -> PermissionStatus {
+        switch status {
+        case .authorized:
+            return .granted
+        case .denied, .restricted:
+            return .denied
+        case .notDetermined:
+            return .notDetermined
+        @unknown default:
+            return .unknown
+        }
+    }
+}
+#endif

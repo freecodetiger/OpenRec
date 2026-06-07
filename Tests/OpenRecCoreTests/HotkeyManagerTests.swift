@@ -33,3 +33,13 @@ import Testing
     #expect(manager.savedHotkey == hotkey)
     #expect(registry.contains(hotkey))
 }
+
+@Test func systemHotkeyRegistryFailsRegistrationUntilCarbonAdapterIsImplemented() {
+    let hotkey = Hotkey(keyCode: 49, modifiers: [.command, .shift])
+    let registry = SystemHotkeyRegistry()
+
+    #expect(registry.contains(hotkey) == false)
+    #expect(throws: HotkeyRegistrationError.registrationFailed("System hotkey registration is not implemented yet")) {
+        try registry.register(hotkey)
+    }
+}
