@@ -352,9 +352,10 @@ GitHub Actions:
 - Run on `macos-latest`.
 - Build the Swift package and app.
 - Run tests.
-- On release tag, create ZIP artifact and optionally DMG.
+- Run whitespace and release packaging script checks.
+- On release tag, create a source ZIP artifact.
 
-MVP release does not include signing, notarization, auto-update, Mac App Store distribution, or Homebrew Cask.
+MVP release does not include a prebuilt `.app` archive, DMG, signing, notarization, auto-update, Mac App Store distribution, or Homebrew Cask.
 
 ## Implementation Assumptions to Validate
 

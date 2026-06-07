@@ -26,25 +26,25 @@ Use these six agents for the MVP. If fewer agents are available, merge adjacent 
 | Agent | Responsibility | Primary Write Scope |
 | --- | --- | --- |
 | Coordinator | PR ordering, contract freeze, conflict decisions, batch sync, final integration checks | `docs/`, `.github/`, small integration fixes |
-| Core Settings | JSON settings, schema version, defaults, invalid JSON recovery, setting tests | `Packages/OpenRecCore/Sources/OpenRecCore/Settings/`, related tests |
-| Core Capture | display/window source discovery, source validation, configuration resolver, bitrate derivation | `Packages/OpenRecCore/Sources/OpenRecCore/Capture/`, `.../Recording/ConfigurationResolver*`, related tests |
-| Core System | permissions, microphone devices, global hotkeys, fallback/conflict handling | `.../Permissions/`, `.../Audio/AudioDeviceProvider*`, `.../Hotkeys/`, related tests |
-| Core Recording | `RecordingCoordinator`, recording state machine, ScreenCaptureKit/AVFoundation lifecycle, temp file finalization | `.../Recording/`, `.../Export/`, capture/audio pipeline adapters |
-| App | MenuBarExtra shell, onboarding, preferences, source selection overlay, save panel, UI wiring | `OpenRecApp/` |
-| Release/QA | CI, packaging, README release notes, manual QA checklist | `.github/workflows/`, packaging scripts, `README.md`, `docs/qa/` |
+| Core Settings | JSON settings, schema version, defaults, invalid JSON recovery, setting tests | `Sources/OpenRecCore/Settings/`, `Tests/OpenRecCoreTests/SettingsStoreTests.swift` |
+| Core Capture | display/window source discovery, source validation, configuration resolver, bitrate derivation | `Sources/OpenRecCore/Capture/`, `Sources/OpenRecCore/Recording/*ConfigurationResolver*`, related tests |
+| Core System | permissions, microphone devices, global hotkeys, fallback/conflict handling | `Sources/OpenRecCore/Permissions/`, `Sources/OpenRecCore/Audio/`, `Sources/OpenRecCore/Hotkeys/`, related tests |
+| Core Recording | `RecordingCoordinator`, recording state machine, ScreenCaptureKit/AVFoundation lifecycle, temp file finalization | `Sources/OpenRecCore/Recording/`, `Sources/OpenRecCore/Export/`, capture/audio pipeline adapters |
+| App | MenuBarExtra shell, onboarding, preferences, source selection overlay, save panel, UI wiring | `Sources/OpenRecApp/`, `Tests/OpenRecAppTests/` |
+| Release/QA | CI, packaging, README release notes, manual QA checklist | `.github/workflows/`, `scripts/`, `README.md`, `docs/qa/` |
 
 ## Worktree and Branch Strategy
 
 Create one worktree per active agent:
 
 ```text
-../OpenRec-worktrees/coordinator
-../OpenRec-worktrees/core-settings
-../OpenRec-worktrees/core-capture
-../OpenRec-worktrees/core-system
-../OpenRec-worktrees/core-recording
-../OpenRec-worktrees/app
-../OpenRec-worktrees/release-qa
+.worktrees/coordinator
+.worktrees/core-settings
+.worktrees/core-capture
+.worktrees/core-system
+.worktrees/core-recording
+.worktrees/app
+.worktrees/release-ci
 ```
 
 Branch names:
@@ -207,17 +207,19 @@ Parallel QA/docs/CI, then final serial release decision.
 Deliverables:
 
 - GitHub Actions build/test/package.
-- ZIP artifact.
+- Source ZIP artifact for release tags.
 - README unsigned Gatekeeper note.
 - Manual QA checklist.
 
 Exit criteria:
 
 - Full CI passes.
-- Real display recording verified.
-- Real window recording verified.
-- Mic recording verified.
+- `swift build`, `swift test`, `git diff --check`, and release packaging script tests pass.
+- Real display recording verified on macOS hardware.
+- Real window recording verified on macOS hardware.
+- Mic recording verified on macOS hardware.
 - Save/cancel/retry/discard verified.
+- README states that the current release artifact is source ZIP only, not a signed or notarized `.app`.
 - No release-blocking QA issues remain.
 
 ## PR Order
@@ -243,7 +245,7 @@ Exit criteria:
 Required:
 
 - Relevant unit tests pass.
-- Core package builds.
+- `swift build` passes.
 - Affected App target builds if the branch touches App code.
 - No network, telemetry, update, upload, recording history, UserDefaults settings, or arbitrary resolution setting code.
 - Agent report lists modified files, tests run, contract impact, and residual risks.
@@ -252,8 +254,8 @@ Required:
 
 Required:
 
-- Full Core unit tests.
-- App build.
+- `swift test`.
+- `swift build`.
 - Contract tests for settings JSON fixtures, error mapping, state transitions, and resolved configuration.
 - Technical design still matches code.
 - No PRD non-goals added.
@@ -286,7 +288,9 @@ Required manual QA:
 - Microphone device switch and fallback.
 - Global hotkey start/stop and conflict behavior.
 - Temporary file cleanup.
-- ZIP download, unzip, launch, and unsigned Gatekeeper documentation.
+- Release tag source ZIP download and unzip.
+- SwiftPM developer launch path, or locally built unsigned app bundle launch path if one is produced outside CI.
+- Unsigned Gatekeeper documentation, with no claim that CI ships a signed or notarized app archive.
 - Offline behavior: no network requests.
 
 ## Review Model
@@ -445,4 +449,3 @@ Recommended next step:
 ## Practical Execution Guidance
 
 Do not maximize parallelism on day one. First finish scaffold and contract freeze. After that, run Core pure logic and App mock UI in parallel. Keep real recording lifecycle and final App-Core integration under one owner each, because ScreenCaptureKit, AVFoundation, writer finalization, save flow, and macOS permissions are tightly coupled.
-

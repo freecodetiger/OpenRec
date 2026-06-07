@@ -57,7 +57,7 @@ The first release includes:
 - Original source resolution only. Users do not choose 720p, 1080p, custom size, or scaling in MVP.
 - Save panel after recording finishes.
 - GitHub Actions build/test and simple release packaging.
-- GitHub Releases distribution as ZIP, with optional DMG.
+- GitHub Releases distribution as source ZIP for the current MVP stage.
 
 ## Recording Modes
 
@@ -174,9 +174,8 @@ OpenRec is fully offline in MVP:
 Distribution:
 
 - GitHub Releases.
-- ZIP artifact required.
-- DMG artifact optional.
-- No signing or notarization required for MVP.
+- Source ZIP artifact required.
+- Prebuilt `.app`, DMG, signing, and notarization are not part of the current MVP release pipeline.
 
 The README must explain that unsigned builds may require users to manually allow the app in macOS Gatekeeper.
 
@@ -187,4 +186,3 @@ The README must explain that unsigned builds may require users to manually allow
 - v0.3: System audio recording.
 - v0.4: Signing, notarization, and Homebrew Cask.
 - v0.5: Optional post-recording export or transcoding presets.
-

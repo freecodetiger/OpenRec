@@ -21,11 +21,20 @@ Out of scope for the MVP: system audio, pause/resume, countdowns, recording hist
 
 ## Build and Test
 
-The current repository baseline is SwiftPM-testable. A full Xcode app archive can be added later when the app target and signing path are ready.
+The current repository baseline is SwiftPM-buildable and SwiftPM-testable. It has a SwiftPM executable target for development, but the release pipeline does not yet produce a signed `.app` bundle, installer, or notarized archive.
 
 ```sh
+swift build
 swift test
 ```
+
+For local development, the SwiftPM executable can be launched with:
+
+```sh
+swift run OpenRecApp
+```
+
+This is a developer launch path, not an end-user app distribution path. macOS permissions such as Screen Recording, Microphone, and global hotkey access must still be granted on real hardware, and some permission prompts are easier to validate from a packaged `.app` once that archive path exists.
 
 For release tags, CI also creates a source ZIP artifact:
 
@@ -33,7 +42,7 @@ For release tags, CI also creates a source ZIP artifact:
 scripts/package-release.sh
 ```
 
-The ZIP is written to `dist/`.
+The ZIP is written to `dist/` and contains the repository source at the tagged commit. It does not contain a prebuilt `.app`, code signature, notarization ticket, Sparkle feed, updater, or installer.
 
 ## Privacy
 
@@ -47,9 +56,9 @@ OpenRec is designed to run fully offline in the MVP:
 - Settings are stored locally as JSON in `~/Library/Application Support/OpenRec/settings.json`.
 - Temporary recordings are local and should be cleaned up after save or discard.
 
-## Unsigned Builds and Gatekeeper
+## Release Stage and Gatekeeper
 
-MVP release builds are not code signed or notarized. macOS Gatekeeper may block an unsigned app after download. Users may need to manually allow the app in System Settings or use the Finder context menu Open flow for unsigned software they trust.
+MVP release artifacts are source archives only. If a developer builds an app bundle locally from this source, that local build is unsigned and not notarized unless they add their own signing pipeline. macOS Gatekeeper may block unsigned app bundles after download or transfer. Users may need to manually allow the app in System Settings or use the Finder context menu Open flow for unsigned software they trust.
 
 ## License
 

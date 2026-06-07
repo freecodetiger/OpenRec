@@ -8,11 +8,10 @@ ARCHIVE_DIR="$DIST_DIR/OpenRec-$TAG_NAME"
 ZIP_PATH="$DIST_DIR/OpenRec-$TAG_NAME.zip"
 
 rm -rf "$ARCHIVE_DIR" "$ZIP_PATH"
-mkdir -p "$ARCHIVE_DIR"
+mkdir -p "$DIST_DIR" "$ARCHIVE_DIR"
 
 git -C "$ROOT_DIR" archive --format=tar HEAD | tar -x -C "$ARCHIVE_DIR"
 
-mkdir -p "$DIST_DIR"
 cd "$DIST_DIR"
 /usr/bin/zip -qry "$(basename "$ZIP_PATH")" "$(basename "$ARCHIVE_DIR")"
 

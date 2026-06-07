@@ -24,8 +24,17 @@ jobs:
       - name: Show Swift version
         run: swift --version
 
-      - name: Run SwiftPM tests
+      - name: Build SwiftPM package
+        run: swift build
+
+      - name: Test SwiftPM package
         run: swift test
+
+      - name: Check whitespace
+        run: git diff --check
+
+      - name: Test release packaging script
+        run: scripts/test-package-release.sh
 
       - name: Package release ZIP
         if: startsWith(github.ref, 'refs/tags/')
