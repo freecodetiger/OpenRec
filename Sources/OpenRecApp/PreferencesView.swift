@@ -57,7 +57,7 @@ struct PreferencesView: View {
             .tabItem { Label("Audio", systemImage: "mic") }
 
             Form {
-                LabeledContent("Global shortcut", value: "Not configured")
+                LabeledContent("Global shortcut", value: snapshot.settings.globalHotkey.label)
                 Button("Record Shortcut") {}
                     .disabled(true)
             }
@@ -68,5 +68,11 @@ struct PreferencesView: View {
                 .padding(20)
                 .tabItem { Label("Permissions", systemImage: "lock.shield") }
         }
+    }
+}
+
+private extension Optional where Wrapped == Hotkey {
+    var label: String {
+        self == nil ? "Not configured" : "Configured"
     }
 }

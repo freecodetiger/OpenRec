@@ -61,6 +61,7 @@ struct AppShellSnapshot: Equatable, Sendable {
     var selectedMicrophoneID: String
     var microphones: [MicrophoneOption]
     var settings: RecordingSettings
+    var permissionStatuses: [PermissionKind: PermissionStatus]
     var requiredPermissions: [PermissionKind]
     var errorMessage: String?
     var elapsedTimeText: String?
@@ -117,6 +118,7 @@ extension AppShellSnapshot {
         selectedMicrophoneID: defaultMicrophone.id,
         microphones: [defaultMicrophone, studioMicrophone],
         settings: .defaults,
+        permissionStatuses: Dictionary(uniqueKeysWithValues: PermissionKind.allCases.map { ($0, .granted) }),
         requiredPermissions: [],
         errorMessage: nil,
         elapsedTimeText: nil
@@ -130,6 +132,7 @@ extension AppShellSnapshot {
         selectedMicrophoneID: studioMicrophone.id,
         microphones: [defaultMicrophone, studioMicrophone],
         settings: .defaults,
+        permissionStatuses: Dictionary(uniqueKeysWithValues: PermissionKind.allCases.map { ($0, .granted) }),
         requiredPermissions: [],
         errorMessage: nil,
         elapsedTimeText: "00:12"
@@ -143,6 +146,12 @@ extension AppShellSnapshot {
         selectedMicrophoneID: defaultMicrophone.id,
         microphones: [defaultMicrophone, studioMicrophone],
         settings: .defaults,
+        permissionStatuses: [
+            .screenRecording: .denied,
+            .microphone: .denied,
+            .accessibility: .granted,
+            .inputMonitoring: .granted
+        ],
         requiredPermissions: [.screenRecording, .microphone],
         errorMessage: nil,
         elapsedTimeText: nil
@@ -156,6 +165,7 @@ extension AppShellSnapshot {
         selectedMicrophoneID: defaultMicrophone.id,
         microphones: [defaultMicrophone, studioMicrophone],
         settings: .defaults,
+        permissionStatuses: Dictionary(uniqueKeysWithValues: PermissionKind.allCases.map { ($0, .granted) }),
         requiredPermissions: [],
         errorMessage: "The selected window is no longer available.",
         elapsedTimeText: nil
