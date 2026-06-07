@@ -122,6 +122,7 @@ public final class AVAssetRecordingOutputWriter: RecordingOutputWriter, @uncheck
     private let assetWriter: AVAssetWriter
     private let videoInput: AVAssetWriterInput
     private let audioInput: AVAssetWriterInput
+    private var didStartSession = false
 
     public init(settings: RecordingOutputWriterSettings, outputURL: URL) throws {
         self.outputURL = outputURL
@@ -160,8 +161,6 @@ public final class AVAssetRecordingOutputWriter: RecordingOutputWriter, @uncheck
                 assetWriter.error?.localizedDescription ?? "AVAssetWriter failed to start."
             )
         }
-
-        assetWriter.startSession(atSourceTime: .zero)
     }
 
     public func appendVideoSampleBuffer(_ sampleBuffer: CMSampleBuffer) throws {
@@ -204,6 +203,11 @@ public final class AVAssetRecordingOutputWriter: RecordingOutputWriter, @uncheck
 
         guard input.isReadyForMoreMediaData else {
             throw OpenRecError.writerFailed("AVAssetWriter \(label) input is not ready.")
+        }
+
+        if !didStartSession {
+            assetWriter.startSession(atSourceTime: sampleBuffer.presentationTimeStamp)
+            didStartSession = true
         }
 
         guard input.append(sampleBuffer) else {
