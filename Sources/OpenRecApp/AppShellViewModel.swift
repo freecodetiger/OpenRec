@@ -4,8 +4,10 @@ import OpenRecCore
 @MainActor
 protocol AppShellAdapter: AnyObject {
     var snapshot: AppShellSnapshot { get }
+    var onHotkeyTriggered: (@MainActor @Sendable () -> Void)? { get set }
 
     func refresh() async -> AppShellSnapshot
+    func registerSavedHotkey() -> AppShellSnapshot
     func startRecording() -> AppShellSnapshot
     func stopRecording() -> AppShellSnapshot
     func selectMode(_ mode: CaptureMode) -> AppShellSnapshot
@@ -27,6 +29,9 @@ final class AppShellViewModel: ObservableObject {
     init(adapter: AppShellAdapter) {
         self.adapter = adapter
         self.snapshot = adapter.snapshot
+        self.adapter.onHotkeyTriggered = { [weak self] in
+            self?.toggleRecording()
+        }
     }
 
     var canStartRecording: Bool {
@@ -88,7 +93,18 @@ final class AppShellViewModel: ObservableObject {
     }
 
     func toggleRecording() {
-        isRecording ? stopRecording() : startRecording()
+        switch snapshot.status {
+        case .ready:
+            startRecording()
+        case .recording:
+            stopRecording()
+        case .awaitingSave, .permissionRequired, .error:
+            return
+        }
+    }
+
+    func startHotkeyMonitoring() {
+        snapshot = adapter.registerSavedHotkey()
     }
 
     func selectMode(_ mode: CaptureMode) {

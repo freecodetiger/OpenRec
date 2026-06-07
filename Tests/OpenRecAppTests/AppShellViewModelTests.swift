@@ -26,6 +26,87 @@ import Foundation
 }
 
 @MainActor
+@Test func viewModelRegistersSavedHotkeyOnStartup() {
+    let hotkey = Hotkey(keyCode: 49, modifiers: [.command, .shift])
+    var snapshot = AppShellSnapshot.ready
+    snapshot.settings.globalHotkey = hotkey
+    let registry = InMemoryHotkeyRegistry()
+    let adapter = MockAppCoreAdapter(
+        initialSnapshot: snapshot,
+        hotkeyManager: HotkeyManager(registry: registry, savedHotkey: hotkey)
+    )
+    let viewModel = AppShellViewModel(adapter: adapter)
+
+    viewModel.startHotkeyMonitoring()
+
+    #expect(registry.contains(hotkey))
+    #expect(viewModel.snapshot.status == .ready)
+    #expect(viewModel.snapshot.errorMessage == nil)
+}
+
+@MainActor
+@Test func viewModelHotkeyTriggerStartsAndStopsRecording() async {
+    let hotkey = Hotkey(keyCode: 49, modifiers: [.command, .shift])
+    let registry = InMemoryHotkeyRegistry()
+    let adapter = MockAppCoreAdapter(
+        initialSnapshot: .ready,
+        hotkeyManager: HotkeyManager(registry: registry, savedHotkey: hotkey)
+    )
+    let viewModel = AppShellViewModel(adapter: adapter)
+
+    viewModel.startHotkeyMonitoring()
+    registry.trigger(hotkey)
+    await Task.yield()
+
+    #expect(viewModel.snapshot.status == .recording)
+    #expect(adapter.startRecordingCallCount == 1)
+
+    registry.trigger(hotkey)
+    await Task.yield()
+
+    #expect(viewModel.snapshot.status == .ready)
+    #expect(adapter.stopRecordingCallCount == 1)
+}
+
+@MainActor
+@Test func viewModelHotkeyTriggerIsNoOpOutsideReadyAndRecordingStates() async {
+    let hotkey = Hotkey(keyCode: 49, modifiers: [.command, .shift])
+    let registry = InMemoryHotkeyRegistry()
+    let adapter = MockAppCoreAdapter(
+        initialSnapshot: .awaitingSave,
+        hotkeyManager: HotkeyManager(registry: registry, savedHotkey: hotkey)
+    )
+    let viewModel = AppShellViewModel(adapter: adapter)
+
+    viewModel.startHotkeyMonitoring()
+    registry.trigger(hotkey)
+    await Task.yield()
+
+    #expect(viewModel.snapshot.status == .awaitingSave)
+    #expect(adapter.startRecordingCallCount == 0)
+    #expect(adapter.stopRecordingCallCount == 0)
+}
+
+@MainActor
+@Test func viewModelShowsHotkeyRegistrationFailureWithoutCrashingOrSavingFailedHotkey() {
+    let hotkey = Hotkey(keyCode: 49, modifiers: [.command, .shift])
+    let registry = InMemoryHotkeyRegistry(
+        registrationFailure: .registrationFailed("system rejected hotkey")
+    )
+    let manager = HotkeyManager(registry: registry, savedHotkey: hotkey)
+    let hotkeyAdapter = MockAppCoreAdapter(initialSnapshot: .ready, hotkeyManager: manager)
+    let viewModel = AppShellViewModel(adapter: hotkeyAdapter)
+
+    viewModel.startHotkeyMonitoring()
+
+    #expect(viewModel.snapshot.status == .error)
+    #expect(viewModel.snapshot.errorMessage == "OpenRec could not register the global shortcut.")
+    #expect(viewModel.snapshot.settings.globalHotkey == nil)
+    #expect(manager.savedHotkey == nil)
+    #expect(registry.contains(hotkey) == false)
+}
+
+@MainActor
 @Test func startRecordingRequiresPermissionsBeforeRecording() {
     let adapter = MockAppCoreAdapter(initialSnapshot: .permissionRequired)
     let viewModel = AppShellViewModel(adapter: adapter)
@@ -190,6 +271,132 @@ import Foundation
     #expect(snapshot.settings.outputFormat == .mov)
     #expect(snapshot.settings.videoCodec == .hevc)
     #expect(snapshot.requiredPermissions.isEmpty)
+}
+
+@MainActor
+@Test func productionAdapterRegistersSavedHotkeyFromSettingsOnStartup() throws {
+    let hotkey = Hotkey(keyCode: 49, modifiers: [.command, .shift])
+    let settingsStore = SettingsStore(settingsDirectory: temporarySettingsDirectory())
+    try settingsStore.save(AppSettings(
+        schemaVersion: 1,
+        recording: RecordingSettings(
+            defaultMode: .display,
+            outputFormat: .mp4,
+            videoCodec: .h264,
+            qualityPreset: .standard,
+            frameRate: .fps30,
+            includeCursor: true,
+            microphoneDeviceID: nil,
+            audioPreset: .standard,
+            globalHotkey: hotkey
+        )
+    ))
+    let registry = InMemoryHotkeyRegistry()
+    let adapter = OpenRecAppCoreAdapter(
+        settingsStore: settingsStore,
+        captureSourceProvider: InMemoryCaptureSourceProvider(displays: [], windows: []),
+        audioDeviceProvider: InMemoryAudioDeviceProvider(devices: []),
+        permissionChecker: PermissionChecker(provider: InMemoryPermissionStatusProvider(statuses: [:])),
+        hotkeyManager: HotkeyManager(registry: registry, savedHotkey: hotkey)
+    )
+
+    let snapshot = adapter.registerSavedHotkey()
+
+    #expect(registry.contains(hotkey))
+    #expect(snapshot.settings.globalHotkey == hotkey)
+    #expect(snapshot.errorMessage == "Choose an available display or window.")
+}
+
+@MainActor
+@Test func productionAdapterRegistrationFailureClearsPersistedHotkeyAndShowsError() throws {
+    let hotkey = Hotkey(keyCode: 49, modifiers: [.command, .shift])
+    let settingsStore = SettingsStore(settingsDirectory: temporarySettingsDirectory())
+    try settingsStore.save(AppSettings(
+        schemaVersion: 1,
+        recording: RecordingSettings(
+            defaultMode: .display,
+            outputFormat: .mp4,
+            videoCodec: .h264,
+            qualityPreset: .standard,
+            frameRate: .fps30,
+            includeCursor: true,
+            microphoneDeviceID: nil,
+            audioPreset: .standard,
+            globalHotkey: hotkey
+        )
+    ))
+    let registry = InMemoryHotkeyRegistry(
+        registrationFailure: .registrationFailed("system rejected hotkey")
+    )
+    let adapter = OpenRecAppCoreAdapter(
+        settingsStore: settingsStore,
+        captureSourceProvider: InMemoryCaptureSourceProvider(displays: [], windows: []),
+        audioDeviceProvider: InMemoryAudioDeviceProvider(devices: []),
+        permissionChecker: PermissionChecker(provider: InMemoryPermissionStatusProvider(statuses: [:])),
+        hotkeyManager: HotkeyManager(registry: registry, savedHotkey: hotkey)
+    )
+
+    let snapshot = adapter.registerSavedHotkey()
+    let persistedSettings = try settingsStore.load().recording
+
+    #expect(snapshot.status == .error)
+    #expect(snapshot.errorMessage == "OpenRec could not register the global shortcut.")
+    #expect(snapshot.settings.globalHotkey == nil)
+    #expect(persistedSettings.globalHotkey == nil)
+    #expect(registry.contains(hotkey) == false)
+}
+
+@MainActor
+@Test func productionAdapterKeepsHotkeyRegistrationFailureVisibleAfterRefresh() async throws {
+    let hotkey = Hotkey(keyCode: 49, modifiers: [.command, .shift])
+    let settingsStore = SettingsStore(settingsDirectory: temporarySettingsDirectory())
+    try settingsStore.save(AppSettings(
+        schemaVersion: 1,
+        recording: RecordingSettings(
+            defaultMode: .display,
+            outputFormat: .mp4,
+            videoCodec: .h264,
+            qualityPreset: .standard,
+            frameRate: .fps30,
+            includeCursor: true,
+            microphoneDeviceID: nil,
+            audioPreset: .standard,
+            globalHotkey: hotkey
+        )
+    ))
+    let adapter = OpenRecAppCoreAdapter(
+        settingsStore: settingsStore,
+        captureSourceProvider: InMemoryCaptureSourceProvider(
+            displays: [
+                DisplaySourceMetadata(
+                    id: DisplayID(rawValue: 1),
+                    name: "Main Display",
+                    pixelSize: CGSize(width: 1920, height: 1080),
+                    isAvailable: true
+                )
+            ],
+            windows: []
+        ),
+        audioDeviceProvider: InMemoryAudioDeviceProvider(devices: [
+            MicrophoneDevice(id: "mic-1", name: "Built-in Microphone", isDefault: true)
+        ]),
+        permissionChecker: PermissionChecker(provider: InMemoryPermissionStatusProvider(
+            statuses: Dictionary(uniqueKeysWithValues: PermissionKind.allCases.map { ($0, .granted) })
+        )),
+        hotkeyManager: HotkeyManager(
+            registry: InMemoryHotkeyRegistry(
+                registrationFailure: .registrationFailed("system rejected hotkey")
+            ),
+            savedHotkey: hotkey
+        )
+    )
+
+    _ = adapter.registerSavedHotkey()
+    let refreshedSnapshot = await adapter.refresh()
+
+    #expect(refreshedSnapshot.status == .error)
+    #expect(refreshedSnapshot.errorMessage == "OpenRec could not register the global shortcut.")
+    #expect(refreshedSnapshot.settings.globalHotkey == nil)
 }
 
 @MainActor

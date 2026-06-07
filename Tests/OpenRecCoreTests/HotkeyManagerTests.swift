@@ -37,6 +37,44 @@ import Carbon
     #expect(registry.contains(hotkey))
 }
 
+@Test func hotkeyManagerRegistersSavedHotkeyWithoutSavingANewValue() throws {
+    let hotkey = Hotkey(keyCode: 49, modifiers: [.command, .shift])
+    let registry = InMemoryHotkeyRegistry()
+    let manager = HotkeyManager(registry: registry, savedHotkey: hotkey)
+
+    try manager.registerSavedHotkey()
+
+    #expect(manager.savedHotkey == hotkey)
+    #expect(registry.contains(hotkey))
+}
+
+@Test func hotkeyManagerDispatchesRegisteredSavedHotkeyEvents() throws {
+    let hotkey = Hotkey(keyCode: 49, modifiers: [.command, .shift])
+    let registry = InMemoryHotkeyRegistry()
+    let manager = HotkeyManager(registry: registry, savedHotkey: hotkey)
+    let recorder = HotkeyEventRecorder()
+    manager.onHotkeyTriggered = { recorder.record($0) }
+
+    try manager.registerSavedHotkey()
+    registry.trigger(hotkey)
+
+    #expect(recorder.hotkeys == [hotkey])
+}
+
+@Test func hotkeyManagerIgnoresUnregisteredHotkeyEvents() throws {
+    let savedHotkey = Hotkey(keyCode: 49, modifiers: [.command, .shift])
+    let otherHotkey = Hotkey(keyCode: 12, modifiers: [.command, .shift])
+    let registry = InMemoryHotkeyRegistry()
+    let manager = HotkeyManager(registry: registry, savedHotkey: savedHotkey)
+    let recorder = HotkeyEventRecorder()
+    manager.onHotkeyTriggered = { recorder.record($0) }
+
+    try manager.registerSavedHotkey()
+    registry.trigger(otherHotkey)
+
+    #expect(recorder.hotkeys.isEmpty)
+}
+
 @Test func systemHotkeyRegistryRegistersHotkeyWithCarbonAdapterAndTracksToken() throws {
     let hotkey = Hotkey(keyCode: 49, modifiers: [.command, .shift])
     let adapter = MockCarbonHotkeyAdapter(registerResult: .success(CarbonHotkeyToken(rawValue: 100)))
@@ -122,12 +160,35 @@ import Carbon
     ])
 }
 
+@Test func systemHotkeyRegistryDispatchesCarbonHotkeyEventsThroughInjectedAdapter() throws {
+    let hotkey = Hotkey(keyCode: 49, modifiers: [.command, .shift])
+    let carbonHotkey = CarbonHotkey(keyCode: 49, modifiers: UInt32(cmdKey | shiftKey))
+    let adapter = MockCarbonHotkeyAdapter(registerResult: .success(CarbonHotkeyToken(rawValue: 100)))
+    let registry = SystemHotkeyRegistry(adapter: adapter)
+    let recorder = HotkeyEventRecorder()
+    registry.eventHandler = { recorder.record($0) }
+
+    try registry.register(hotkey)
+    adapter.trigger(carbonHotkey)
+
+    #expect(recorder.hotkeys == [hotkey])
+}
+
+private final class HotkeyEventRecorder: @unchecked Sendable {
+    private(set) var hotkeys: [Hotkey] = []
+
+    func record(_ hotkey: Hotkey) {
+        hotkeys.append(hotkey)
+    }
+}
+
 private final class MockCarbonHotkeyAdapter: CarbonHotkeyRegistering, @unchecked Sendable {
     enum Call: Equatable {
         case register(CarbonHotkey)
         case unregister(CarbonHotkeyToken)
     }
 
+    var eventHandler: (@Sendable (CarbonHotkey) -> Void)?
     var calls: [Call] = []
     var registeredHotkeys: [CarbonHotkey] = []
     var unregisteredTokens: [CarbonHotkeyToken] = []
@@ -150,5 +211,9 @@ private final class MockCarbonHotkeyAdapter: CarbonHotkeyRegistering, @unchecked
     func unregister(_ token: CarbonHotkeyToken) {
         calls.append(.unregister(token))
         unregisteredTokens.append(token)
+    }
+
+    func trigger(_ hotkey: CarbonHotkey) {
+        eventHandler?(hotkey)
     }
 }

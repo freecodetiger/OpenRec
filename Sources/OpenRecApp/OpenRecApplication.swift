@@ -14,7 +14,9 @@ struct OpenRecApplication: App {
             snapshot.errorMessage = "OpenRec could not load local settings."
             adapter = MockAppCoreAdapter(initialSnapshot: snapshot)
         }
-        _viewModel = StateObject(wrappedValue: AppShellViewModel(adapter: adapter))
+        let model = AppShellViewModel(adapter: adapter)
+        model.startHotkeyMonitoring()
+        _viewModel = StateObject(wrappedValue: model)
     }
 
     var body: some Scene {

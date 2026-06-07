@@ -7,6 +7,8 @@ public enum HotkeyRegistrationError: Error, Equatable, Sendable {
 }
 
 public protocol HotkeyRegistry: AnyObject, Sendable {
+    var eventHandler: (@Sendable (Hotkey) -> Void)? { get set }
+
     func contains(_ hotkey: Hotkey) -> Bool
     func register(_ hotkey: Hotkey) throws
     func unregister(_ hotkey: Hotkey)
@@ -16,10 +18,14 @@ public final class HotkeyManager: @unchecked Sendable {
     private let registry: any HotkeyRegistry
 
     public private(set) var savedHotkey: Hotkey?
+    public var onHotkeyTriggered: (@Sendable (Hotkey) -> Void)?
 
     public init(registry: any HotkeyRegistry, savedHotkey: Hotkey? = nil) {
         self.registry = registry
         self.savedHotkey = savedHotkey
+        self.registry.eventHandler = { [weak self] hotkey in
+            self?.handleTriggeredHotkey(hotkey)
+        }
     }
 
     public func saveAndRegister(_ hotkey: Hotkey) throws {
@@ -31,15 +37,30 @@ public final class HotkeyManager: @unchecked Sendable {
         savedHotkey = hotkey
     }
 
+    public func registerSavedHotkey() throws {
+        guard let savedHotkey else { return }
+        try registry.register(savedHotkey)
+    }
+
     public func clearSavedHotkey() {
         if let savedHotkey {
             registry.unregister(savedHotkey)
         }
         savedHotkey = nil
     }
+
+    private func handleTriggeredHotkey(_ hotkey: Hotkey) {
+        guard hotkey == savedHotkey, registry.contains(hotkey) else {
+            return
+        }
+
+        onHotkeyTriggered?(hotkey)
+    }
 }
 
 public final class InMemoryHotkeyRegistry: HotkeyRegistry, @unchecked Sendable {
+    public var eventHandler: (@Sendable (Hotkey) -> Void)?
+
     private var registeredHotkeys: [Hotkey]
     private let registrationFailure: HotkeyRegistrationError?
 
@@ -68,6 +89,10 @@ public final class InMemoryHotkeyRegistry: HotkeyRegistry, @unchecked Sendable {
     public func unregister(_ hotkey: Hotkey) {
         registeredHotkeys.removeAll { $0 == hotkey }
     }
+
+    public func trigger(_ hotkey: Hotkey) {
+        eventHandler?(hotkey)
+    }
 }
 
 #if os(macOS)
@@ -81,12 +106,29 @@ struct CarbonHotkeyToken: Equatable, Sendable {
 }
 
 protocol CarbonHotkeyRegistering: AnyObject, Sendable {
+    var eventHandler: (@Sendable (CarbonHotkey) -> Void)? { get set }
+
     func register(_ hotkey: CarbonHotkey) throws -> CarbonHotkeyToken
     func unregister(_ token: CarbonHotkeyToken)
 }
 
 final class CarbonHotkeyAdapter: CarbonHotkeyRegistering, @unchecked Sendable {
     private let signature: OSType = 0x4F526563
+    private let hotkeyEventClass = UInt32(kEventClassKeyboard)
+    private let hotkeyEventKind = UInt32(kEventHotKeyPressed)
+    private var eventHandlerReference: EventHandlerRef?
+
+    var eventHandler: (@Sendable (CarbonHotkey) -> Void)?
+
+    init() {
+        installEventHandler()
+    }
+
+    deinit {
+        if let eventHandlerReference {
+            RemoveEventHandler(eventHandlerReference)
+        }
+    }
 
     func register(_ hotkey: CarbonHotkey) throws -> CarbonHotkeyToken {
         var hotkeyReference: EventHotKeyRef?
@@ -114,18 +156,65 @@ final class CarbonHotkeyAdapter: CarbonHotkeyRegistering, @unchecked Sendable {
 
         _ = UnregisterEventHotKey(hotkeyReference)
     }
+
+    private func installEventHandler() {
+        var eventSpec = EventTypeSpec(
+            eventClass: hotkeyEventClass,
+            eventKind: hotkeyEventKind
+        )
+        let userData = UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
+        InstallEventHandler(
+            GetApplicationEventTarget(),
+            { _, event, userData in
+                guard let event, let userData else {
+                    return noErr
+                }
+
+                let adapter = Unmanaged<CarbonHotkeyAdapter>
+                    .fromOpaque(userData)
+                    .takeUnretainedValue()
+                return adapter.handle(event: event)
+            },
+            1,
+            &eventSpec,
+            userData,
+            &eventHandlerReference
+        )
+    }
+
+    private func handle(event: EventRef) -> OSStatus {
+        var hotkeyID = EventHotKeyID()
+        let status = GetEventParameter(
+            event,
+            EventParamName(kEventParamDirectObject),
+            EventParamType(typeEventHotKeyID),
+            nil,
+            MemoryLayout<EventHotKeyID>.size,
+            nil,
+            &hotkeyID
+        )
+        guard status == noErr, hotkeyID.signature == signature else {
+            return noErr
+        }
+
+        eventHandler?(CarbonHotkey(keyCode: hotkeyID.id, modifiers: 0))
+        return noErr
+    }
 }
 
 public final class SystemHotkeyRegistry: HotkeyRegistry, @unchecked Sendable {
     private let adapter: any CarbonHotkeyRegistering
     private var registeredTokens: [(hotkey: Hotkey, token: CarbonHotkeyToken)] = []
+    public var eventHandler: (@Sendable (Hotkey) -> Void)?
 
     public init() {
         self.adapter = CarbonHotkeyAdapter()
+        installAdapterEventHandler()
     }
 
     init(adapter: any CarbonHotkeyRegistering) {
         self.adapter = adapter
+        installAdapterEventHandler()
     }
 
     public func contains(_ hotkey: Hotkey) -> Bool {
@@ -174,6 +263,23 @@ public final class SystemHotkeyRegistry: HotkeyRegistry, @unchecked Sendable {
             carbonModifiers |= UInt32(shiftKey)
         }
         return carbonModifiers
+    }
+
+    private func installAdapterEventHandler() {
+        adapter.eventHandler = { [weak self] carbonHotkey in
+            guard let self,
+                  let hotkey = self.hotkey(for: carbonHotkey) else {
+                return
+            }
+
+            self.eventHandler?(hotkey)
+        }
+    }
+
+    private func hotkey(for carbonHotkey: CarbonHotkey) -> Hotkey? {
+        registeredTokens.first {
+            UInt32($0.hotkey.keyCode) == carbonHotkey.keyCode
+        }?.hotkey
     }
 }
 #endif

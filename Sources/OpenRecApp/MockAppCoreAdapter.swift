@@ -3,22 +3,44 @@ import OpenRecCore
 
 final class MockAppCoreAdapter: AppShellAdapter {
     private(set) var snapshot: AppShellSnapshot
+    var onHotkeyTriggered: (@MainActor @Sendable () -> Void)?
+
+    private(set) var startRecordingCallCount = 0
+    private(set) var stopRecordingCallCount = 0
     private(set) var saveRecordingCallCount = 0
     private(set) var retrySaveCallCount = 0
     private(set) var discardRecordingCallCount = 0
     private(set) var selectModes: [CaptureMode] = []
     private(set) var selectTargetIDs: [String] = []
+    private let hotkeyManager: HotkeyManager?
 
-    init(initialSnapshot: AppShellSnapshot = .ready) {
+    init(initialSnapshot: AppShellSnapshot = .ready, hotkeyManager: HotkeyManager? = nil) {
         self.snapshot = initialSnapshot
+        self.hotkeyManager = hotkeyManager
+        self.hotkeyManager?.onHotkeyTriggered = { [weak self] _ in
+            Task { @MainActor in
+                self?.onHotkeyTriggered?()
+            }
+        }
     }
 
     func refresh() async -> AppShellSnapshot {
         snapshot
     }
 
+    func registerSavedHotkey() -> AppShellSnapshot {
+        do {
+            try hotkeyManager?.registerSavedHotkey()
+        } catch {
+            hotkeyManager?.clearSavedHotkey()
+            snapshot = snapshot.withHotkeyRegistrationFailure()
+        }
+        return snapshot
+    }
+
     func startRecording() -> AppShellSnapshot {
         guard snapshot.status == .ready else { return snapshot }
+        startRecordingCallCount += 1
         snapshot.status = .recording
         snapshot.elapsedTimeText = "00:00"
         snapshot.errorMessage = nil
@@ -27,6 +49,7 @@ final class MockAppCoreAdapter: AppShellAdapter {
 
     func stopRecording() -> AppShellSnapshot {
         guard snapshot.status == .recording else { return snapshot }
+        stopRecordingCallCount += 1
         snapshot.status = .ready
         snapshot.elapsedTimeText = nil
         return snapshot
@@ -98,5 +121,17 @@ final class MockAppCoreAdapter: AppShellAdapter {
     func selectScenario(_ snapshot: AppShellSnapshot) -> AppShellSnapshot {
         self.snapshot = snapshot
         return snapshot
+    }
+}
+
+private extension AppShellSnapshot {
+    func withHotkeyRegistrationFailure() -> AppShellSnapshot {
+        var next = self
+        next.status = .error
+        next.settings.globalHotkey = nil
+        next.errorMessage = "OpenRec could not register the global shortcut."
+        next.elapsedTimeText = nil
+        next.pendingSaveURL = nil
+        return next
     }
 }

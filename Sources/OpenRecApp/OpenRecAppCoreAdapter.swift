@@ -12,6 +12,8 @@ protocol RecordingFileMoving: AnyObject {
     func moveRecording(from sourceURL: URL, to destinationURL: URL) throws
 }
 
+private let hotkeyRegistrationFailureMessage = "OpenRec could not register the global shortcut."
+
 final class OpenRecAppCoreAdapter: AppShellAdapter {
     private let settingsStore: SettingsStore
     private let captureSourceProvider: any CaptureSourceProvider
@@ -24,8 +26,11 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
     private let fileMover: any RecordingFileMoving
 
     private(set) var snapshot: AppShellSnapshot
+    var onHotkeyTriggered: (@MainActor @Sendable () -> Void)?
+
     private var displays: [DisplaySourceMetadata]
     private var windows: [WindowSourceMetadata]
+    private var hotkeyRegistrationErrorMessage: String?
 
     init(
         settingsStore: SettingsStore,
@@ -50,6 +55,7 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
         self.sourceValidator = sourceValidator
         self.savePanel = savePanel
         self.fileMover = fileMover
+        self.hotkeyRegistrationErrorMessage = nil
         self.recordingCoordinator = recordingCoordinator ?? RecordingCoordinator(
             permissionValidator: DefaultRecordingPermissionValidator(permissionChecker: permissionChecker),
             configurationResolver: DefaultRecordingConfigurationResolver(
@@ -58,6 +64,11 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
             engine: recordingEngine ?? ScreenCaptureRecordingEngine(),
             finalizer: FileTemporaryRecordingFinalizer()
         )
+        self.hotkeyManager.onHotkeyTriggered = { [weak self] _ in
+            Task { @MainActor in
+                self?.onHotkeyTriggered?()
+            }
+        }
     }
 
     convenience init() throws {
@@ -83,10 +94,35 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
             windows = try await captureSourceProvider.windows()
             sourceValidator.update(displays: displays, windows: windows)
             let settings = try settingsStore.load().recording
-            snapshot = buildSnapshot(settings: settings, recordingState: recordingCoordinator.state)
+            snapshot = buildSnapshot(
+                settings: settings,
+                recordingState: recordingCoordinator.state
+            ).withHotkeyRegistrationError(hotkeyRegistrationErrorMessage)
         } catch {
             snapshot = snapshot.withError(AppErrorPresenter.message(for: error))
         }
+        return snapshot
+    }
+
+    func registerSavedHotkey() -> AppShellSnapshot {
+        guard hotkeyManager.savedHotkey != nil else {
+            return snapshot
+        }
+
+        do {
+            try hotkeyManager.registerSavedHotkey()
+            hotkeyRegistrationErrorMessage = nil
+            snapshot.settings.globalHotkey = hotkeyManager.savedHotkey
+        } catch {
+            hotkeyManager.clearSavedHotkey()
+            hotkeyRegistrationErrorMessage = hotkeyRegistrationFailureMessage
+            var settings = snapshot.settings
+            settings.globalHotkey = nil
+            snapshot.settings = settings
+            _ = save(settings: settings)
+            snapshot = snapshot.withHotkeyRegistrationError(hotkeyRegistrationErrorMessage)
+        }
+
         return snapshot
     }
 
@@ -464,6 +500,20 @@ private extension AppShellSnapshot {
         var next = self
         next.status = .error
         next.errorMessage = message
+        next.elapsedTimeText = nil
+        next.pendingSaveURL = nil
+        return next
+    }
+
+    func withHotkeyRegistrationError(_ message: String?) -> AppShellSnapshot {
+        guard let message else {
+            return self
+        }
+
+        var next = self
+        next.status = .error
+        next.errorMessage = message
+        next.settings.globalHotkey = nil
         next.elapsedTimeText = nil
         next.pendingSaveURL = nil
         return next
