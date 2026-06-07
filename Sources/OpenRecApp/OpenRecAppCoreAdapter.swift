@@ -20,6 +20,7 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
         audioDeviceProvider: any AudioDeviceProvider,
         permissionChecker: PermissionChecker,
         hotkeyManager: HotkeyManager,
+        recordingEngine: (any RecordingEngine)? = nil,
         recordingCoordinator: RecordingCoordinator? = nil
     ) {
         self.settingsStore = settingsStore
@@ -37,7 +38,7 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
             configurationResolver: DefaultRecordingConfigurationResolver(
                 sourceValidator: sourceValidator
             ),
-            engine: DisabledRecordingEngine(),
+            engine: recordingEngine ?? ScreenCaptureRecordingEngine(),
             finalizer: FileTemporaryRecordingFinalizer()
         )
     }
@@ -441,16 +442,6 @@ private enum AppErrorPresenter {
         case let .unknown(reason):
             return reason
         }
-    }
-}
-
-private struct DisabledRecordingEngine: RecordingEngine {
-    func start(configuration: ResolvedRecordingConfiguration) throws -> RecordingSession {
-        throw OpenRecError.writerInitializationFailed("Recording is currently unavailable.")
-    }
-
-    func stop(session: RecordingSession) throws -> URL {
-        throw OpenRecError.writerFailed("Recording is currently unavailable.")
     }
 }
 

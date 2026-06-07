@@ -315,7 +315,8 @@ private func awaitingSaveAdapter(
 }
 
 @MainActor
-@Test func productionAdapterStartReturnsClearDisabledRecordingError() async {
+@Test func productionAdapterStartsRecordingWithInjectedDefaultEngine() async {
+    let engine = NoOpRecordingEngine()
     let adapter = OpenRecAppCoreAdapter(
         settingsStore: SettingsStore(settingsDirectory: temporarySettingsDirectory()),
         captureSourceProvider: InMemoryCaptureSourceProvider(
@@ -335,14 +336,16 @@ private func awaitingSaveAdapter(
         permissionChecker: PermissionChecker(provider: InMemoryPermissionStatusProvider(
             statuses: Dictionary(uniqueKeysWithValues: PermissionKind.allCases.map { ($0, .granted) })
         )),
-        hotkeyManager: HotkeyManager(registry: InMemoryHotkeyRegistry())
+        hotkeyManager: HotkeyManager(registry: InMemoryHotkeyRegistry()),
+        recordingEngine: engine
     )
 
     _ = await adapter.refresh()
     let snapshot = adapter.startRecording()
 
-    #expect(snapshot.status == .error)
-    #expect(snapshot.errorMessage == "Recording is currently unavailable.")
+    #expect(snapshot.status == .recording)
+    #expect(snapshot.errorMessage == nil)
+    #expect(engine.startedConfigurations.map(\.source) == [.display(DisplayID(rawValue: 1))])
 }
 
 @MainActor
@@ -448,9 +451,13 @@ private struct NoOpRecordingConfigurationResolver: RecordingConfigurationResolvi
     }
 }
 
-private struct NoOpRecordingEngine: RecordingEngine {
+private final class NoOpRecordingEngine: RecordingEngine, @unchecked Sendable {
+    private(set) var startedConfigurations: [ResolvedRecordingConfiguration] = []
+    private(set) var stoppedSessions: [RecordingSession] = []
+
     func start(configuration: ResolvedRecordingConfiguration) throws -> RecordingSession {
-        RecordingSession(
+        startedConfigurations.append(configuration)
+        return RecordingSession(
             id: UUID(),
             source: configuration.source,
             temporaryFileURL: URL(filePath: "/tmp/openrec-recording.tmp")
@@ -458,7 +465,8 @@ private struct NoOpRecordingEngine: RecordingEngine {
     }
 
     func stop(session: RecordingSession) throws -> URL {
-        URL(filePath: "/tmp/openrec-finalized.mp4")
+        stoppedSessions.append(session)
+        return URL(filePath: "/tmp/openrec-finalized.mp4")
     }
 }
 
