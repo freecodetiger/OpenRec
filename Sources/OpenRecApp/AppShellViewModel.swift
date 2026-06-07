@@ -102,10 +102,15 @@ final class AppShellViewModel: ObservableObject {
     }
 
     func applySourceSelection(_ draft: SourceSelectionDraft) {
-        if draft.mode != snapshot.mode {
+        guard draft.canApply else { return }
+
+        let shouldSelectMode = draft.mode != snapshot.mode
+        let shouldSelectTarget = shouldSelectMode || draft.selectedTargetID != snapshot.selectedTarget.id
+
+        if shouldSelectMode {
             snapshot = adapter.selectMode(draft.mode)
         }
-        if draft.selectedTargetID != snapshot.selectedTarget.id {
+        if shouldSelectTarget {
             snapshot = adapter.selectTarget(id: draft.selectedTargetID)
         }
     }

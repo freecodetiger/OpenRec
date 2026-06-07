@@ -42,7 +42,7 @@ struct OpenRecApplication: App {
         .defaultSize(width: 560, height: 460)
 
         WindowGroup("Source Selection", id: "source-selection") {
-            SourceSelectionView(snapshot: viewModel.snapshot)
+            SourceSelectionView(viewModel: viewModel)
         }
         .defaultSize(width: 520, height: 380)
 

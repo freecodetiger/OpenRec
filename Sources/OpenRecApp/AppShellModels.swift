@@ -92,6 +92,14 @@ struct SourceSelectionDraft: Equatable, Sendable {
         availableTargets.filter { $0.mode == mode }
     }
 
+    var selectedTarget: SourceTargetOption? {
+        visibleTargets.first { $0.id == selectedTargetID }
+    }
+
+    var canApply: Bool {
+        selectedTarget != nil
+    }
+
     mutating func selectMode(_ mode: CaptureMode) {
         self.mode = mode
         if !visibleTargets.contains(where: { $0.id == selectedTargetID }),
@@ -101,7 +109,7 @@ struct SourceSelectionDraft: Equatable, Sendable {
     }
 
     mutating func selectTarget(id: String) {
-        guard availableTargets.contains(where: { $0.id == id }) else { return }
+        guard visibleTargets.contains(where: { $0.id == id }) else { return }
         selectedTargetID = id
     }
 }
