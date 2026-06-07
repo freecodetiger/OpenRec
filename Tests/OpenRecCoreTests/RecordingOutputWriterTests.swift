@@ -46,6 +46,41 @@ import Testing
     }
 }
 
+@Test func avAssetRecordingOutputWriterStartsSessionAtFirstVideoSampleTime() async throws {
+    let directory = try temporaryDirectory()
+    let outputURL = directory.appending(path: "first-sample-time.mov")
+    let settings = try RecordingOutputWriterSettings(
+        configuration: ResolvedRecordingConfiguration(
+            source: .display(DisplayID(rawValue: 1)),
+            pixelSize: CGSize(width: 64, height: 64),
+            outputFormat: .mov,
+            videoCodec: .h264,
+            bitrate: 500_000,
+            frameRate: 30,
+            includeCursor: true,
+            microphoneDeviceID: nil
+        )
+    )
+    let writer = try AVAssetRecordingOutputWriter(settings: settings, outputURL: outputURL)
+    let firstPTS = CMTime(seconds: 10, preferredTimescale: 600)
+
+    try writer.start()
+    try writer.appendVideoSampleBuffer(
+        try videoSampleBuffer(size: CGSize(width: 64, height: 64), presentationTime: firstPTS)
+    )
+    try writer.appendVideoSampleBuffer(
+        try videoSampleBuffer(
+            size: CGSize(width: 64, height: 64),
+            presentationTime: firstPTS + CMTime(value: 1, timescale: 30)
+        )
+    )
+    let finalizedURL = try writer.finish()
+
+    let asset = AVURLAsset(url: finalizedURL)
+    let duration = try await asset.load(.duration)
+    #expect(duration < CMTime(seconds: 1, preferredTimescale: 600))
+}
+
 @Test func temporaryRecordingURLUsesContainerExtensionAndOpenRecPrefix() throws {
     let directory = try temporaryDirectory()
     let engine = ScreenCaptureRecordingEngine(
@@ -74,20 +109,24 @@ import Testing
     }
 }
 
-@Test func screenCaptureRecordingEngineFailsExplicitlyWhenScreenCaptureKitCaptureIsNotImplemented() {
+@Test func screenCaptureRecordingEngineStartsAndStopsCaptureSessionWhenFactoriesSucceed() throws {
+    let captureSession = StubRecordingCaptureSession()
+    let captureSessionFactory = SuccessfulRecordingCaptureSessionFactory(captureSession: captureSession)
     let engine = ScreenCaptureRecordingEngine(
-        writerFactory: SuccessfulRecordingOutputWriterFactory()
+        writerFactory: SuccessfulRecordingOutputWriterFactory(),
+        captureSessionFactory: captureSessionFactory,
+        idProvider: { UUID(uuidString: "00000000-0000-0000-0000-000000000123")! }
     )
+    let configuration = resolvedConfiguration(outputFormat: .mp4, videoCodec: .h264)
 
-    do {
-        _ = try engine.start(configuration: resolvedConfiguration(outputFormat: .mp4, videoCodec: .h264))
-        Issue.record("Expected ScreenCaptureRecordingEngine.start to fail.")
-    } catch let failure as RecordingEngineFailure {
-        #expect(failure.error == .captureConfigurationInvalid("ScreenCaptureKit recording capture is not implemented."))
-        #expect(failure.temporaryFileURL?.pathExtension == "mp4")
-    } catch {
-        Issue.record("Expected RecordingEngineFailure, got \(error).")
-    }
+    let session = try engine.start(configuration: configuration)
+    let finalizedURL = try engine.stop(session: session)
+
+    #expect(session.source == configuration.source)
+    #expect(finalizedURL == session.temporaryFileURL)
+    #expect(captureSessionFactory.startedConfigurations == [configuration])
+    #expect(captureSessionFactory.writers.count == 1)
+    #expect(captureSession.didStop)
 }
 
 @Test func screenCaptureRecordingEngineRejectsStopForUnknownSession() {
@@ -129,6 +168,59 @@ private func temporaryDirectory() throws -> URL {
     return url
 }
 
+private func videoSampleBuffer(size: CGSize, presentationTime: CMTime) throws -> CMSampleBuffer {
+    var pixelBuffer: CVPixelBuffer?
+    let createStatus = CVPixelBufferCreate(
+        kCFAllocatorDefault,
+        Int(size.width),
+        Int(size.height),
+        kCVPixelFormatType_32BGRA,
+        nil,
+        &pixelBuffer
+    )
+    guard createStatus == kCVReturnSuccess, let pixelBuffer else {
+        throw OpenRecError.writerFailed("Could not create test pixel buffer.")
+    }
+
+    CVPixelBufferLockBaseAddress(pixelBuffer, [])
+    if let baseAddress = CVPixelBufferGetBaseAddress(pixelBuffer) {
+        memset(baseAddress, 0, CVPixelBufferGetDataSize(pixelBuffer))
+    }
+    CVPixelBufferUnlockBaseAddress(pixelBuffer, [])
+
+    var formatDescription: CMVideoFormatDescription?
+    let formatStatus = CMVideoFormatDescriptionCreateForImageBuffer(
+        allocator: kCFAllocatorDefault,
+        imageBuffer: pixelBuffer,
+        formatDescriptionOut: &formatDescription
+    )
+    guard formatStatus == noErr, let formatDescription else {
+        throw OpenRecError.writerFailed("Could not create test format description.")
+    }
+
+    var timing = CMSampleTimingInfo(
+        duration: CMTime(value: 1, timescale: 30),
+        presentationTimeStamp: presentationTime,
+        decodeTimeStamp: .invalid
+    )
+    var sampleBuffer: CMSampleBuffer?
+    let sampleStatus = CMSampleBufferCreateForImageBuffer(
+        allocator: kCFAllocatorDefault,
+        imageBuffer: pixelBuffer,
+        dataReady: true,
+        makeDataReadyCallback: nil,
+        refcon: nil,
+        formatDescription: formatDescription,
+        sampleTiming: &timing,
+        sampleBufferOut: &sampleBuffer
+    )
+    guard sampleStatus == noErr, let sampleBuffer else {
+        throw OpenRecError.writerFailed("Could not create test video sample buffer.")
+    }
+
+    return sampleBuffer
+}
+
 private struct FailingRecordingOutputWriterFactory: RecordingOutputWriterFactory {
     var error: OpenRecError
 
@@ -146,6 +238,33 @@ private struct SuccessfulRecordingOutputWriterFactory: RecordingOutputWriterFact
         outputURL: URL
     ) throws -> any RecordingOutputWriter {
         StubRecordingOutputWriter(outputURL: outputURL)
+    }
+}
+
+private final class StubRecordingCaptureSession: RecordingCaptureSession, @unchecked Sendable {
+    private(set) var didStop = false
+
+    func stop() throws {
+        didStop = true
+    }
+}
+
+private final class SuccessfulRecordingCaptureSessionFactory: RecordingCaptureSessionFactory, @unchecked Sendable {
+    private let captureSession: StubRecordingCaptureSession
+    private(set) var startedConfigurations: [ResolvedRecordingConfiguration] = []
+    private(set) var writers: [any RecordingOutputWriter] = []
+
+    init(captureSession: StubRecordingCaptureSession) {
+        self.captureSession = captureSession
+    }
+
+    func startCapture(
+        configuration: ResolvedRecordingConfiguration,
+        writer: any RecordingOutputWriter
+    ) throws -> any RecordingCaptureSession {
+        startedConfigurations.append(configuration)
+        writers.append(writer)
+        return captureSession
     }
 }
 
