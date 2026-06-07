@@ -19,6 +19,10 @@ struct SaveFlowView: View {
             if let pendingSaveURL = snapshot.pendingSaveURL {
                 LabeledContent("Temporary File", value: pendingSaveURL.lastPathComponent)
             }
+            if let errorMessage = snapshot.errorMessage {
+                Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+            }
 
             HStack {
                 Button("Save As...", action: onSave)

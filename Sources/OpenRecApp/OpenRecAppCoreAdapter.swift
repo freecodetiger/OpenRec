@@ -1,5 +1,16 @@
+import AppKit
 import Foundation
 import OpenRecCore
+import UniformTypeIdentifiers
+
+@MainActor
+protocol RecordingSavePanelPresenting: AnyObject {
+    func destinationURL(defaultFileName: String) -> URL?
+}
+
+protocol RecordingFileMoving: AnyObject {
+    func moveRecording(from sourceURL: URL, to destinationURL: URL) throws
+}
 
 final class OpenRecAppCoreAdapter: AppShellAdapter {
     private let settingsStore: SettingsStore
@@ -9,6 +20,8 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
     private let hotkeyManager: HotkeyManager
     private let recordingCoordinator: RecordingCoordinator
     private let sourceValidator: AppCaptureSourceValidator
+    private let savePanel: any RecordingSavePanelPresenting
+    private let fileMover: any RecordingFileMoving
 
     private(set) var snapshot: AppShellSnapshot
     private var displays: [DisplaySourceMetadata]
@@ -20,7 +33,9 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
         audioDeviceProvider: any AudioDeviceProvider,
         permissionChecker: PermissionChecker,
         hotkeyManager: HotkeyManager,
-        recordingCoordinator: RecordingCoordinator? = nil
+        recordingCoordinator: RecordingCoordinator? = nil,
+        savePanel: any RecordingSavePanelPresenting = NSSavePanelRecordingSavePanel(),
+        fileMover: any RecordingFileMoving = FileManagerRecordingFileMover()
     ) {
         self.settingsStore = settingsStore
         self.captureSourceProvider = captureSourceProvider
@@ -32,6 +47,8 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
         self.snapshot = Self.emptySnapshot()
         let sourceValidator = AppCaptureSourceValidator()
         self.sourceValidator = sourceValidator
+        self.savePanel = savePanel
+        self.fileMover = fileMover
         self.recordingCoordinator = recordingCoordinator ?? RecordingCoordinator(
             permissionValidator: DefaultRecordingPermissionValidator(permissionChecker: permissionChecker),
             configurationResolver: DefaultRecordingConfigurationResolver(
@@ -188,13 +205,25 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
 
     func saveRecording() -> AppShellSnapshot {
         guard snapshot.status == .awaitingSave else { return snapshot }
+        guard case let .awaitingSave(pendingURL) = recordingCoordinator.state else {
+            snapshot = buildSnapshot(settings: snapshot.settings, recordingState: recordingCoordinator.state)
+            return snapshot
+        }
+
+        guard let destinationURL = savePanel.destinationURL(defaultFileName: pendingURL.lastPathComponent) else {
+            let error = recordingCoordinator.saveCancelled()
+            snapshot = buildSnapshot(settings: snapshot.settings, recordingState: recordingCoordinator.state)
+            snapshot.errorMessage = AppErrorPresenter.message(for: error)
+            return snapshot
+        }
 
         do {
+            try fileMover.moveRecording(from: pendingURL, to: destinationURL)
             try recordingCoordinator.markSaved()
             snapshot = buildSnapshot(settings: snapshot.settings, recordingState: recordingCoordinator.state)
         } catch {
             snapshot = buildSnapshot(settings: snapshot.settings, recordingState: recordingCoordinator.state)
-                .withError(AppErrorPresenter.message(for: error))
+            snapshot.errorMessage = AppErrorPresenter.message(for: error)
         }
 
         return snapshot
@@ -397,6 +426,40 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
             elapsedTimeText: nil,
             pendingSaveURL: nil
         )
+    }
+}
+
+@MainActor
+private final class NSSavePanelRecordingSavePanel: RecordingSavePanelPresenting {
+    func destinationURL(defaultFileName: String) -> URL? {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = defaultFileName
+        panel.canCreateDirectories = true
+        panel.isExtensionHidden = false
+        switch URL(filePath: defaultFileName).pathExtension.lowercased() {
+        case "mp4":
+            panel.allowedContentTypes = [.mpeg4Movie]
+        case "mov":
+            panel.allowedContentTypes = [.quickTimeMovie]
+        default:
+            break
+        }
+        return panel.runModal() == .OK ? panel.url : nil
+    }
+}
+
+private final class FileManagerRecordingFileMover: RecordingFileMoving {
+    func moveRecording(from sourceURL: URL, to destinationURL: URL) throws {
+        if FileManager.default.fileExists(atPath: destinationURL.path(percentEncoded: false)) {
+            _ = try FileManager.default.replaceItemAt(
+                destinationURL,
+                withItemAt: sourceURL,
+                backupItemName: nil,
+                options: []
+            )
+        } else {
+            try FileManager.default.moveItem(at: sourceURL, to: destinationURL)
+        }
     }
 }
 
