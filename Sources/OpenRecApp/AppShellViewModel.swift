@@ -11,6 +11,9 @@ protocol AppShellAdapter: AnyObject {
     func selectMode(_ mode: CaptureMode) -> AppShellSnapshot
     func selectTarget(id: String) -> AppShellSnapshot
     func selectMicrophone(id: String) -> AppShellSnapshot
+    func saveRecording() -> AppShellSnapshot
+    func retrySave() -> AppShellSnapshot
+    func discardRecording() -> AppShellSnapshot
     func selectScenario(_ snapshot: AppShellSnapshot) -> AppShellSnapshot
 }
 
@@ -29,6 +32,18 @@ final class AppShellViewModel: ObservableObject {
         snapshot.status == .ready
     }
 
+    var canSaveRecording: Bool {
+        snapshot.status == .awaitingSave
+    }
+
+    var canRetrySave: Bool {
+        snapshot.status == .awaitingSave
+    }
+
+    var canDiscardRecording: Bool {
+        snapshot.status == .awaitingSave
+    }
+
     var isRecording: Bool {
         snapshot.status == .recording
     }
@@ -43,6 +58,8 @@ final class AppShellViewModel: ObservableObject {
             "record.circle"
         case .recording:
             "stop.circle.fill"
+        case .awaitingSave:
+            "square.and.arrow.down.fill"
         case .permissionRequired:
             "exclamationmark.triangle.fill"
         case .error:
@@ -86,6 +103,21 @@ final class AppShellViewModel: ObservableObject {
     func selectMicrophone(id: String) {
         guard id != snapshot.selectedMicrophoneID else { return }
         snapshot = adapter.selectMicrophone(id: id)
+    }
+
+    func saveRecording() {
+        guard canSaveRecording else { return }
+        snapshot = adapter.saveRecording()
+    }
+
+    func retrySave() {
+        guard canRetrySave else { return }
+        snapshot = adapter.retrySave()
+    }
+
+    func discardRecording() {
+        guard canDiscardRecording else { return }
+        snapshot = adapter.discardRecording()
     }
 
     func selectScenario(_ scenario: AppShellSnapshot) {

@@ -3,6 +3,9 @@ import OpenRecCore
 
 final class MockAppCoreAdapter: AppShellAdapter {
     private(set) var snapshot: AppShellSnapshot
+    private(set) var saveRecordingCallCount = 0
+    private(set) var retrySaveCallCount = 0
+    private(set) var discardRecordingCallCount = 0
 
     init(initialSnapshot: AppShellSnapshot = .ready) {
         self.snapshot = initialSnapshot
@@ -47,6 +50,31 @@ final class MockAppCoreAdapter: AppShellAdapter {
         if snapshot.microphones.contains(where: { $0.id == id }) {
             snapshot.selectedMicrophoneID = id
         }
+        return snapshot
+    }
+
+    func saveRecording() -> AppShellSnapshot {
+        guard snapshot.status == .awaitingSave else { return snapshot }
+        saveRecordingCallCount += 1
+        snapshot.status = .ready
+        snapshot.errorMessage = nil
+        snapshot.pendingSaveURL = nil
+        return snapshot
+    }
+
+    func retrySave() -> AppShellSnapshot {
+        guard snapshot.status == .awaitingSave else { return snapshot }
+        retrySaveCallCount += 1
+        snapshot.errorMessage = "Choose a save location or discard the recording."
+        return snapshot
+    }
+
+    func discardRecording() -> AppShellSnapshot {
+        guard snapshot.status == .awaitingSave else { return snapshot }
+        discardRecordingCallCount += 1
+        snapshot.status = .ready
+        snapshot.errorMessage = nil
+        snapshot.pendingSaveURL = nil
         return snapshot
     }
 

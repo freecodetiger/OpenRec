@@ -4,6 +4,7 @@ import OpenRecCore
 enum AppShellStatus: Equatable, Sendable {
     case ready
     case recording
+    case awaitingSave
     case permissionRequired
     case error
 
@@ -13,6 +14,8 @@ enum AppShellStatus: Equatable, Sendable {
             "Ready"
         case .recording:
             "Recording"
+        case .awaitingSave:
+            "Awaiting Save"
         case .permissionRequired:
             "Permission Required"
         case .error:
@@ -26,6 +29,8 @@ enum AppShellStatus: Equatable, Sendable {
             "Choose a source and start recording."
         case .recording:
             "Capture is running with the selected settings."
+        case .awaitingSave:
+            "Save, retry, or discard the finished recording."
         case .permissionRequired:
             "OpenRec needs macOS permissions before recording."
         case .error:
@@ -65,6 +70,7 @@ struct AppShellSnapshot: Equatable, Sendable {
     var requiredPermissions: [PermissionKind]
     var errorMessage: String?
     var elapsedTimeText: String?
+    var pendingSaveURL: URL?
 
     var selectedMicrophone: MicrophoneOption {
         microphones.first { $0.id == selectedMicrophoneID } ?? microphones[0]
@@ -121,7 +127,8 @@ extension AppShellSnapshot {
         permissionStatuses: Dictionary(uniqueKeysWithValues: PermissionKind.allCases.map { ($0, .granted) }),
         requiredPermissions: [],
         errorMessage: nil,
-        elapsedTimeText: nil
+        elapsedTimeText: nil,
+        pendingSaveURL: nil
     )
 
     static let recording = AppShellSnapshot(
@@ -135,7 +142,23 @@ extension AppShellSnapshot {
         permissionStatuses: Dictionary(uniqueKeysWithValues: PermissionKind.allCases.map { ($0, .granted) }),
         requiredPermissions: [],
         errorMessage: nil,
-        elapsedTimeText: "00:12"
+        elapsedTimeText: "00:12",
+        pendingSaveURL: nil
+    )
+
+    static let awaitingSave = AppShellSnapshot(
+        status: .awaitingSave,
+        mode: .display,
+        selectedTarget: displayTarget,
+        availableTargets: [displayTarget, externalDisplayTarget, windowTarget],
+        selectedMicrophoneID: studioMicrophone.id,
+        microphones: [defaultMicrophone, studioMicrophone],
+        settings: .defaults,
+        permissionStatuses: Dictionary(uniqueKeysWithValues: PermissionKind.allCases.map { ($0, .granted) }),
+        requiredPermissions: [],
+        errorMessage: nil,
+        elapsedTimeText: nil,
+        pendingSaveURL: URL(filePath: "/tmp/openrec-finalized.mp4")
     )
 
     static let permissionRequired = AppShellSnapshot(
@@ -154,7 +177,8 @@ extension AppShellSnapshot {
         ],
         requiredPermissions: [.screenRecording, .microphone],
         errorMessage: nil,
-        elapsedTimeText: nil
+        elapsedTimeText: nil,
+        pendingSaveURL: nil
     )
 
     static let error = AppShellSnapshot(
@@ -168,12 +192,14 @@ extension AppShellSnapshot {
         permissionStatuses: Dictionary(uniqueKeysWithValues: PermissionKind.allCases.map { ($0, .granted) }),
         requiredPermissions: [],
         errorMessage: "The selected window is no longer available.",
-        elapsedTimeText: nil
+        elapsedTimeText: nil,
+        pendingSaveURL: nil
     )
 
     static let mockScenarios: [AppShellSnapshot] = [
         .ready,
         .recording,
+        .awaitingSave,
         .permissionRequired,
         .error
     ]

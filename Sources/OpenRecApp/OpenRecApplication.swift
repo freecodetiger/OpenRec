@@ -44,7 +44,12 @@ struct OpenRecApplication: App {
         .defaultSize(width: 520, height: 380)
 
         WindowGroup("Save Recording", id: "save-flow") {
-            SaveFlowView(snapshot: viewModel.snapshot)
+            SaveFlowView(
+                snapshot: viewModel.snapshot,
+                onSave: viewModel.saveRecording,
+                onRetrySave: viewModel.retrySave,
+                onDiscard: viewModel.discardRecording
+            )
         }
         .defaultSize(width: 520, height: 320)
     }
