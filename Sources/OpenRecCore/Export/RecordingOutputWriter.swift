@@ -172,6 +172,10 @@ public final class AVAssetRecordingOutputWriter: RecordingOutputWriter, @uncheck
     }
 
     public func finish() throws -> URL {
+        guard didStartSession else {
+            throw OpenRecError.writerFailed("No video frames were captured.")
+        }
+
         if assetWriter.status == .writing {
             videoInput.markAsFinished()
             audioInput.markAsFinished()

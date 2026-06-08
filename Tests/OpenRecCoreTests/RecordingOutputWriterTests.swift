@@ -81,6 +81,30 @@ import Testing
     #expect(duration < CMTime(seconds: 1, preferredTimescale: 600))
 }
 
+@Test func avAssetRecordingOutputWriterRejectsFinishBeforeFirstVideoFrame() throws {
+    let directory = try temporaryDirectory()
+    let outputURL = directory.appending(path: "no-video-frame.mov")
+    let settings = try RecordingOutputWriterSettings(
+        configuration: ResolvedRecordingConfiguration(
+            source: .display(DisplayID(rawValue: 1)),
+            pixelSize: CGSize(width: 64, height: 64),
+            outputFormat: .mov,
+            videoCodec: .h264,
+            bitrate: 500_000,
+            frameRate: 30,
+            includeCursor: true,
+            microphoneDeviceID: nil
+        )
+    )
+    let writer = try AVAssetRecordingOutputWriter(settings: settings, outputURL: outputURL)
+
+    try writer.start()
+
+    #expect(throws: OpenRecError.writerFailed("No video frames were captured.")) {
+        _ = try writer.finish()
+    }
+}
+
 @Test func temporaryRecordingURLUsesContainerExtensionAndOpenRecPrefix() throws {
     let directory = try temporaryDirectory()
     let engine = ScreenCaptureRecordingEngine(

@@ -441,7 +441,8 @@ final class ScreenCaptureKitStreamOutputHandler: NSObject, SCStreamOutput, @unch
         do {
             switch type {
             case .screen:
-            try writer.appendVideoSampleBuffer(sampleBuffer)
+                guard sampleBuffer.isCompleteScreenFrame else { return }
+                try writer.appendVideoSampleBuffer(sampleBuffer)
             case .audio, .microphone:
                 try writer.appendAudioSampleBuffer(sampleBuffer)
             case .unsupported:
@@ -466,6 +467,23 @@ final class ScreenCaptureKitStreamOutputHandler: NSObject, SCStreamOutput, @unch
         lock.withLock {
             lastError = error
         }
+    }
+}
+
+private extension CMSampleBuffer {
+    var isCompleteScreenFrame: Bool {
+        guard let attachments = CMSampleBufferGetSampleAttachmentsArray(
+            self,
+            createIfNecessary: false
+        ) as? [[SCStreamFrameInfo: Any]] else {
+            return true
+        }
+
+        guard let rawStatus = attachments.first?[.status] as? Int else {
+            return true
+        }
+
+        return SCFrameStatus(rawValue: rawStatus) == .complete
     }
 }
 

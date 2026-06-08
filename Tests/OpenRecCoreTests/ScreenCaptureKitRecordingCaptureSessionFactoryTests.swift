@@ -181,6 +181,27 @@ import Testing
     #expect(writer.audioAppendCount == 2)
 }
 
+@Test func screenCaptureKitOutputHandlerIgnoresIncompleteScreenFrames() throws {
+    let writer = SpyRecordingOutputWriter(outputURL: URL(filePath: "/tmp/openrec-incomplete-frame.mp4"))
+    let handler = ScreenCaptureKitStreamOutputHandler(writer: writer)
+
+    handler.handle(
+        try videoSampleBuffer(frameStatus: .idle),
+        type: .screen
+    )
+    handler.handle(
+        try videoSampleBuffer(frameStatus: .blank),
+        type: .screen
+    )
+    handler.handle(
+        try videoSampleBuffer(frameStatus: .complete),
+        type: .screen
+    )
+
+    #expect(writer.videoAppendCount == 1)
+    #expect(handler.takeLastError() == nil)
+}
+
 private func resolvedConfiguration(
     source: CaptureSource,
     pixelSize: CGSize = CGSize(width: 1920, height: 1080),
@@ -220,6 +241,60 @@ private func emptySampleBuffer() throws -> CMSampleBuffer {
     guard status == noErr, let sampleBuffer else {
         throw OpenRecError.writerFailed("Could not create test sample buffer.")
     }
+
+    return sampleBuffer
+}
+
+private func videoSampleBuffer(frameStatus: SCFrameStatus) throws -> CMSampleBuffer {
+    var pixelBuffer: CVPixelBuffer?
+    let createStatus = CVPixelBufferCreate(
+        kCFAllocatorDefault,
+        64,
+        64,
+        kCVPixelFormatType_32BGRA,
+        nil,
+        &pixelBuffer
+    )
+    guard createStatus == kCVReturnSuccess, let pixelBuffer else {
+        throw OpenRecError.writerFailed("Could not create test pixel buffer.")
+    }
+
+    var formatDescription: CMVideoFormatDescription?
+    let formatStatus = CMVideoFormatDescriptionCreateForImageBuffer(
+        allocator: kCFAllocatorDefault,
+        imageBuffer: pixelBuffer,
+        formatDescriptionOut: &formatDescription
+    )
+    guard formatStatus == noErr, let formatDescription else {
+        throw OpenRecError.writerFailed("Could not create test format description.")
+    }
+
+    var timing = CMSampleTimingInfo(
+        duration: CMTime(value: 1, timescale: 30),
+        presentationTimeStamp: .zero,
+        decodeTimeStamp: .invalid
+    )
+    var sampleBuffer: CMSampleBuffer?
+    let sampleStatus = CMSampleBufferCreateForImageBuffer(
+        allocator: kCFAllocatorDefault,
+        imageBuffer: pixelBuffer,
+        dataReady: true,
+        makeDataReadyCallback: nil,
+        refcon: nil,
+        formatDescription: formatDescription,
+        sampleTiming: &timing,
+        sampleBufferOut: &sampleBuffer
+    )
+    guard sampleStatus == noErr, let sampleBuffer else {
+        throw OpenRecError.writerFailed("Could not create test video sample buffer.")
+    }
+
+    let attachments = unsafeBitCast(
+        CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: true)!,
+        to: NSMutableArray.self
+    )
+    let firstAttachment = attachments[0] as! NSMutableDictionary
+    firstAttachment[SCStreamFrameInfo.status.rawValue] = frameStatus.rawValue
 
     return sampleBuffer
 }
