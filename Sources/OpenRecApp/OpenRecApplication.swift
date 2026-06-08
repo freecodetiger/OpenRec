@@ -4,6 +4,7 @@ import SwiftUI
 @main
 struct OpenRecApplication: App {
     @StateObject private var viewModel: AppShellViewModel
+    @StateObject private var statusItemController: AppKitStatusItemController
 
     init() {
         let adapter: AppShellAdapter
@@ -17,6 +18,7 @@ struct OpenRecApplication: App {
         let model = AppShellViewModel(adapter: adapter)
         model.startHotkeyMonitoring()
         _viewModel = StateObject(wrappedValue: model)
+        _statusItemController = StateObject(wrappedValue: AppKitStatusItemController(viewModel: model))
     }
 
     var body: some Scene {
@@ -29,6 +31,9 @@ struct OpenRecApplication: App {
             Label("OpenRec", systemImage: viewModel.menuBarSymbolName)
         }
         .menuBarExtraStyle(.window)
+        .onChange(of: viewModel.snapshot.status) { _, _ in
+            statusItemController.refreshSymbol()
+        }
 
         WindowGroup("Preferences", id: "preferences") {
             PreferencesView(
