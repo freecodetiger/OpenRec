@@ -28,6 +28,7 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
     private let systemSettingsOpener: any SystemSettingsOpening
     private let permissionRequester: any PermissionRequesting
     private let appRelauncher: any AppRelaunching
+    private let screenFrameConverter: WindowScreenFrameConverter
 
     private(set) var snapshot: AppShellSnapshot
     var onHotkeyTriggered: (@MainActor @Sendable () -> Void)?
@@ -48,7 +49,8 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
         fileMover: any RecordingFileMoving = FileManagerRecordingFileMover(),
         systemSettingsOpener: any SystemSettingsOpening = NSWorkspaceSystemSettingsOpener(),
         permissionRequester: any PermissionRequesting = SystemPermissionRequester(),
-        appRelauncher: any AppRelaunching = NSWorkspaceAppRelauncher()
+        appRelauncher: any AppRelaunching = NSWorkspaceAppRelauncher(),
+        screenFrameConverter: WindowScreenFrameConverter = WindowScreenFrameConverter()
     ) {
         self.settingsStore = settingsStore
         self.captureSourceProvider = captureSourceProvider
@@ -65,6 +67,7 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
         self.systemSettingsOpener = systemSettingsOpener
         self.permissionRequester = permissionRequester
         self.appRelauncher = appRelauncher
+        self.screenFrameConverter = screenFrameConverter
         self.hotkeyRegistrationErrorMessage = nil
         self.recordingCoordinator = recordingCoordinator ?? RecordingCoordinator(
             permissionValidator: DefaultRecordingPermissionValidator(permissionChecker: permissionChecker),
@@ -421,7 +424,7 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
         displays: [DisplaySourceMetadata],
         windows: [WindowSourceMetadata]
     ) -> [SourceTargetOption] {
-        displays.map { display in
+        return displays.map { display in
             SourceTargetOption(
                 id: "display-\(display.id.rawValue)",
                 mode: .display,
@@ -436,7 +439,7 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
                 source: window.source,
                 title: windowTitle(window),
                 subtitle: pixelSizeSubtitle(window.pixelSize),
-                screenFrame: window.screenFrame
+                screenFrame: screenFrameConverter.appKitFrame(fromScreenCaptureKitFrame: window.screenFrame)
             )
         }
     }

@@ -126,9 +126,65 @@ struct WindowSelectionOverlayModel: Equatable {
     }
 }
 
+struct WindowSelectionOverlayLayout: Equatable {
+    static func panelFrames(for screenFrames: [CGRect], fallbackFrame: CGRect = .zero) -> [CGRect] {
+        let frames = screenFrames.filter { !$0.isEmpty }
+        if !frames.isEmpty {
+            return frames
+        }
+
+        return fallbackFrame.isEmpty ? [] : [fallbackFrame]
+    }
+}
+
+struct WindowScreenFrameConverter: Equatable {
+    struct DisplayFrame: Equatable {
+        var appKitFrame: CGRect
+        var coreGraphicsFrame: CGRect
+    }
+
+    var displays: [DisplayFrame]
+
+    init(displays: [DisplayFrame]) {
+        self.displays = displays
+    }
+
+    @MainActor
+    init(screens: [NSScreen] = NSScreen.screens) {
+        displays = screens.compactMap { screen in
+            guard let displayID = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID else {
+                return nil
+            }
+
+            return DisplayFrame(
+                appKitFrame: screen.frame,
+                coreGraphicsFrame: CGDisplayBounds(displayID)
+            )
+        }
+    }
+
+    func appKitFrame(fromScreenCaptureKitFrame frame: CGRect?) -> CGRect? {
+        guard let frame, !frame.isEmpty else { return frame }
+        guard let display = display(containing: frame) else { return frame }
+
+        return CGRect(
+            x: display.appKitFrame.minX + (frame.minX - display.coreGraphicsFrame.minX),
+            y: display.appKitFrame.maxY - (frame.maxY - display.coreGraphicsFrame.minY),
+            width: frame.width,
+            height: frame.height
+        )
+    }
+
+    private func display(containing frame: CGRect) -> DisplayFrame? {
+        let midpoint = CGPoint(x: frame.midX, y: frame.midY)
+        return displays.first { $0.coreGraphicsFrame.contains(midpoint) } ??
+            displays.first { !$0.coreGraphicsFrame.intersection(frame).isNull }
+    }
+}
+
 @MainActor
 final class WindowSelectionOverlayPresenter {
-    private var window: NSWindow?
+    private var windows: [NSWindow] = []
 
     func present(
         targets: [SourceTargetOption],
@@ -137,37 +193,45 @@ final class WindowSelectionOverlayPresenter {
     ) {
         dismiss()
 
-        let overlayScreenFrame = WindowSelectionOverlayWindow.overlayFrame()
-        let overlayWindow = WindowSelectionOverlayWindow(
-            overlayFrame: overlayScreenFrame,
-            onCancel: { [weak self] in
-                self?.dismiss()
-                onCancel()
-            }
+        let panelFrames = WindowSelectionOverlayLayout.panelFrames(
+            for: NSScreen.screens.map(\.frame),
+            fallbackFrame: NSScreen.main?.frame ?? .zero
         )
-        overlayWindow.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        overlayWindow.contentView = NSHostingView(
-            rootView: WindowSelectionOverlayView(
-                targets: targets,
-                overlayScreenFrame: overlayScreenFrame,
-                onSelect: { [weak self] targetID in
-                    self?.dismiss()
-                    onSelect(targetID)
-                },
+
+        windows = panelFrames.map { overlayScreenFrame in
+            let overlayWindow = WindowSelectionOverlayWindow(
+                overlayFrame: overlayScreenFrame,
                 onCancel: { [weak self] in
                     self?.dismiss()
                     onCancel()
                 }
             )
-        )
-        overlayWindow.makeKeyAndOrderFront(nil)
+            overlayWindow.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+            overlayWindow.contentView = NSHostingView(
+                rootView: WindowSelectionOverlayView(
+                    targets: targets,
+                    overlayScreenFrame: overlayScreenFrame,
+                    onSelect: { [weak self] targetID in
+                        self?.dismiss()
+                        onSelect(targetID)
+                    },
+                    onCancel: { [weak self] in
+                        self?.dismiss()
+                        onCancel()
+                    }
+                )
+            )
+            overlayWindow.orderFrontRegardless()
+            return overlayWindow
+        }
+
+        windows.first?.makeKey()
         NSApp.activate(ignoringOtherApps: true)
-        window = overlayWindow
     }
 
     func dismiss() {
-        window?.close()
-        window = nil
+        windows.forEach { $0.close() }
+        windows = []
     }
 }
 
@@ -206,11 +270,6 @@ private final class WindowSelectionOverlayWindow: NSPanel {
         super.keyDown(with: event)
     }
 
-    static func overlayFrame() -> CGRect {
-        NSScreen.screens
-            .map(\.frame)
-            .reduce(NSScreen.main?.frame ?? .zero) { $0.union($1) }
-    }
 }
 
 struct WindowSelectionOverlayView: View {

@@ -237,6 +237,60 @@ import Testing
 }
 
 @MainActor
+@Test func windowSelectionOverlayUsesOnePanelFramePerScreenInsteadOfUnionFrame() {
+    let leftScreen = CGRect(x: -1440, y: 0, width: 1440, height: 900)
+    let mainScreen = CGRect(x: 0, y: 0, width: 1728, height: 1117)
+
+    let frames = WindowSelectionOverlayLayout.panelFrames(for: [leftScreen, mainScreen])
+
+    #expect(frames == [leftScreen, mainScreen])
+    #expect(frames != [leftScreen.union(mainScreen)])
+}
+
+@MainActor
+@Test func windowSelectionOverlayMapsWindowIntoContainingScreenPanel() {
+    let mainScreen = CGRect(x: 0, y: 0, width: 1728, height: 1117)
+    let target = SourceTargetOption(
+        id: "window-main",
+        mode: .window,
+        source: .window(WindowID(rawValue: 100)),
+        title: "Main Display Window",
+        subtitle: "Window recording target",
+        screenFrame: CGRect(x: 120, y: 140, width: 800, height: 500)
+    )
+    let overlay = WindowSelectionOverlayModel(targets: [target])
+
+    let frame = overlay.frame(
+        for: target,
+        index: 0,
+        in: mainScreen.size,
+        overlayScreenFrame: mainScreen
+    )
+
+    #expect(frame == CGRect(x: 120, y: 140, width: 800, height: 500))
+}
+
+@MainActor
+@Test func screenCaptureKitWindowFrameConvertsToAppKitScreenFrameForExternalDisplay() {
+    let converter = WindowScreenFrameConverter(displays: [
+        WindowScreenFrameConverter.DisplayFrame(
+            appKitFrame: CGRect(x: 0, y: 0, width: 1280, height: 832),
+            coreGraphicsFrame: CGRect(x: 0, y: 0, width: 1280, height: 832)
+        ),
+        WindowScreenFrameConverter.DisplayFrame(
+            appKitFrame: CGRect(x: -515, y: 832, width: 2560, height: 1440),
+            coreGraphicsFrame: CGRect(x: -515, y: -1440, width: 2560, height: 1440)
+        )
+    ])
+
+    let convertedFrame = converter.appKitFrame(
+        fromScreenCaptureKitFrame: CGRect(x: 1536, y: -1440, width: 38, height: 24)
+    )
+
+    #expect(convertedFrame == CGRect(x: 1536, y: 2248, width: 38, height: 24))
+}
+
+@MainActor
 @Test func windowControlBarLayoutFitsInsideNormalWindowFrame() {
     let layout = WindowRecordingControlBarLayout(
         targetFrame: CGRect(x: 100, y: 100, width: 900, height: 600),

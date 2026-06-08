@@ -584,6 +584,55 @@ import Foundation
 }
 
 @MainActor
+@Test func productionAdapterExposesAppKitWindowFramesForOverlayLayout() async {
+    let adapter = OpenRecAppCoreAdapter(
+        settingsStore: SettingsStore(settingsDirectory: temporarySettingsDirectory()),
+        captureSourceProvider: InMemoryCaptureSourceProvider(
+            displays: [
+                DisplaySourceMetadata(
+                    id: DisplayID(rawValue: 1),
+                    name: "Main Display",
+                    pixelSize: CGSize(width: 1280, height: 832),
+                    isAvailable: true
+                )
+            ],
+            windows: [
+                WindowSourceMetadata(
+                    id: WindowID(rawValue: 7),
+                    title: "External Window",
+                    owningApplicationName: "Editor",
+                    pixelSize: CGSize(width: 76, height: 48),
+                    screenFrame: CGRect(x: 1536, y: -1440, width: 38, height: 24),
+                    isAvailable: true
+                )
+            ]
+        ),
+        audioDeviceProvider: InMemoryAudioDeviceProvider(devices: [
+            MicrophoneDevice(id: "mic-1", name: "Built-in Microphone", isDefault: true)
+        ]),
+        permissionChecker: PermissionChecker(provider: InMemoryPermissionStatusProvider(
+            statuses: Dictionary(uniqueKeysWithValues: PermissionKind.allCases.map { ($0, .granted) })
+        )),
+        hotkeyManager: HotkeyManager(registry: InMemoryHotkeyRegistry()),
+        screenFrameConverter: WindowScreenFrameConverter(displays: [
+            WindowScreenFrameConverter.DisplayFrame(
+                appKitFrame: CGRect(x: 0, y: 0, width: 1280, height: 832),
+                coreGraphicsFrame: CGRect(x: 0, y: 0, width: 1280, height: 832)
+            ),
+            WindowScreenFrameConverter.DisplayFrame(
+                appKitFrame: CGRect(x: -515, y: 832, width: 2560, height: 1440),
+                coreGraphicsFrame: CGRect(x: -515, y: -1440, width: 2560, height: 1440)
+            )
+        ])
+    )
+
+    let snapshot = await adapter.refresh()
+    let windowTarget = snapshot.availableTargets.first { $0.source == .window(WindowID(rawValue: 7)) }
+
+    #expect(windowTarget?.screenFrame == CGRect(x: 1536, y: 2248, width: 38, height: 24))
+}
+
+@MainActor
 @Test func productionAdapterRegistersSavedHotkeyFromSettingsOnStartup() throws {
     let hotkey = Hotkey(keyCode: 49, modifiers: [.command, .shift])
     let settingsStore = SettingsStore(settingsDirectory: temporarySettingsDirectory())
