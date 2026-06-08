@@ -27,6 +27,7 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
     private let fileMover: any RecordingFileMoving
     private let systemSettingsOpener: any SystemSettingsOpening
     private let permissionRequester: any PermissionRequesting
+    private let appRelauncher: any AppRelaunching
 
     private(set) var snapshot: AppShellSnapshot
     var onHotkeyTriggered: (@MainActor @Sendable () -> Void)?
@@ -46,7 +47,8 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
         savePanel: any RecordingSavePanelPresenting = NSSavePanelRecordingSavePanel(),
         fileMover: any RecordingFileMoving = FileManagerRecordingFileMover(),
         systemSettingsOpener: any SystemSettingsOpening = NSWorkspaceSystemSettingsOpener(),
-        permissionRequester: any PermissionRequesting = SystemPermissionRequester()
+        permissionRequester: any PermissionRequesting = SystemPermissionRequester(),
+        appRelauncher: any AppRelaunching = NSWorkspaceAppRelauncher()
     ) {
         self.settingsStore = settingsStore
         self.captureSourceProvider = captureSourceProvider
@@ -62,6 +64,7 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
         self.fileMover = fileMover
         self.systemSettingsOpener = systemSettingsOpener
         self.permissionRequester = permissionRequester
+        self.appRelauncher = appRelauncher
         self.hotkeyRegistrationErrorMessage = nil
         self.recordingCoordinator = recordingCoordinator ?? RecordingCoordinator(
             permissionValidator: DefaultRecordingPermissionValidator(permissionChecker: permissionChecker),
@@ -220,6 +223,10 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
         await permissionRequester.requestPermission(for: kind)
         systemSettingsOpener.openPermissionSettings(for: kind)
         return await refresh()
+    }
+
+    func reopenApplication() {
+        appRelauncher.reopenApplication()
     }
 
     func refreshPermissions() -> AppShellSnapshot {

@@ -99,8 +99,12 @@ struct MenuBarPopoverView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Label(item.statusText, systemImage: "exclamationmark.triangle")
                             if item.kind == .screenRecording {
-                                Text("After changing this permission, quit and reopen OpenRec.")
-                                    .foregroundStyle(.secondary)
+                                Button {
+                                    viewModel.reopenApplication()
+                                } label: {
+                                    Label("Reopen OpenRec", systemImage: "arrow.clockwise.circle")
+                                }
+                                .buttonStyle(.borderless)
                             }
                         }
                         .font(.caption)

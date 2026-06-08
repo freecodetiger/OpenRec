@@ -164,6 +164,16 @@ import Foundation
 }
 
 @MainActor
+@Test func viewModelReopensApplicationThroughAdapter() {
+    let adapter = MockAppCoreAdapter(initialSnapshot: .permissionRequired)
+    let viewModel = AppShellViewModel(adapter: adapter)
+
+    viewModel.reopenApplication()
+
+    #expect(adapter.reopenApplicationCallCount == 1)
+}
+
+@MainActor
 @Test func viewModelExposesSaveFlowActionsOnlyWhileAwaitingSave() {
     let adapter = MockAppCoreAdapter(initialSnapshot: .awaitingSave)
     let viewModel = AppShellViewModel(adapter: adapter)

@@ -16,6 +16,7 @@ final class MockAppCoreAdapter: AppShellAdapter {
     private(set) var selectTargetIDs: [String] = []
     private(set) var openedPermissionSettings: [PermissionKind] = []
     private(set) var requestedPermissions: [PermissionKind] = []
+    private(set) var reopenApplicationCallCount = 0
     var permissionRefreshSnapshot: AppShellSnapshot?
     private let hotkeyManager: HotkeyManager?
 
@@ -110,6 +111,10 @@ final class MockAppCoreAdapter: AppShellAdapter {
     func requestPermission(for kind: PermissionKind) async -> AppShellSnapshot {
         requestedPermissions.append(kind)
         return await refresh()
+    }
+
+    func reopenApplication() {
+        reopenApplicationCallCount += 1
     }
 
     func refreshPermissions() -> AppShellSnapshot {

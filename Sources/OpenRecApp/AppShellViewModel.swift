@@ -16,6 +16,7 @@ protocol AppShellAdapter: AnyObject {
     func updateSettings(_ settings: RecordingSettings) -> AppShellSnapshot
     func openPermissionSettings(for kind: PermissionKind) -> AppShellSnapshot
     func requestPermission(for kind: PermissionKind) async -> AppShellSnapshot
+    func reopenApplication()
     func refreshPermissions() -> AppShellSnapshot
     func saveRecording() -> AppShellSnapshot
     func retrySave() -> AppShellSnapshot
@@ -152,6 +153,10 @@ final class AppShellViewModel: ObservableObject {
         Task {
             snapshot = await adapter.requestPermission(for: kind)
         }
+    }
+
+    func reopenApplication() {
+        adapter.reopenApplication()
     }
 
     func refreshPermissions() {
