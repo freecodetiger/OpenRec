@@ -128,7 +128,7 @@ import Foundation
 }
 
 @MainActor
-@Test func viewModelRechecksPermissionsThroughAdapter() {
+@Test func viewModelRechecksPermissionsThroughAdapter() async throws {
     var grantedSnapshot = AppShellSnapshot.permissionRequired
     grantedSnapshot.status = .ready
     grantedSnapshot.permissionStatuses = Dictionary(uniqueKeysWithValues: PermissionKind.allCases.map { ($0, .granted) })
@@ -138,8 +138,9 @@ import Foundation
     let viewModel = AppShellViewModel(adapter: adapter)
 
     viewModel.refreshPermissions()
+    try await Task.sleep(for: .milliseconds(50))
 
-    #expect(adapter.refreshPermissionsCallCount == 1)
+    #expect(adapter.refreshCallCount == 1)
     #expect(viewModel.snapshot.status == .ready)
     #expect(viewModel.snapshot.requiredPermissions.isEmpty)
 }
@@ -684,6 +685,30 @@ private func awaitingSaveAdapter(
 }
 
 @MainActor
+@Test func productionAdapterSkipsSourceDiscoveryWhenRequiredPermissionsAreMissing() async {
+    let adapter = OpenRecAppCoreAdapter(
+        settingsStore: SettingsStore(settingsDirectory: temporarySettingsDirectory()),
+        captureSourceProvider: FailingCaptureSourceProvider(),
+        audioDeviceProvider: InMemoryAudioDeviceProvider(devices: []),
+        permissionChecker: PermissionChecker(provider: InMemoryPermissionStatusProvider(
+            statuses: [
+                .screenRecording: .denied,
+                .microphone: .granted,
+                .accessibility: .granted,
+                .inputMonitoring: .granted
+            ]
+        )),
+        hotkeyManager: HotkeyManager(registry: InMemoryHotkeyRegistry())
+    )
+
+    let snapshot = await adapter.refresh()
+
+    #expect(snapshot.status == .permissionRequired)
+    #expect(snapshot.requiredPermissions == [.screenRecording])
+    #expect(snapshot.errorMessage == nil)
+}
+
+@MainActor
 @Test func productionAdapterDoesNotBlockCurrentRecordingForOptionalSystemPermissions() async {
     let adapter = OpenRecAppCoreAdapter(
         settingsStore: SettingsStore(settingsDirectory: temporarySettingsDirectory()),
@@ -769,7 +794,7 @@ private func awaitingSaveAdapter(
 
     _ = await adapter.refresh()
     provider.statuses[.screenRecording] = .granted
-    let snapshot = adapter.refreshPermissions()
+    let snapshot = await adapter.refresh()
 
     #expect(snapshot.status == .ready)
     #expect(snapshot.requiredPermissions.isEmpty)
@@ -1167,6 +1192,16 @@ private final class SpyRecordingFileMover: RecordingFileMoving {
 }
 
 private struct TestSaveMoveError: Error {}
+
+private struct FailingCaptureSourceProvider: CaptureSourceProvider {
+    func displays() async throws -> [DisplaySourceMetadata] {
+        throw OpenRecError.unknown("source discovery should not run before required permissions are granted")
+    }
+
+    func windows() async throws -> [WindowSourceMetadata] {
+        throw OpenRecError.unknown("source discovery should not run before required permissions are granted")
+    }
+}
 
 @MainActor
 private final class SpyPermissionRequester: PermissionRequesting {

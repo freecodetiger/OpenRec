@@ -97,10 +97,22 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
 
     func refresh() async -> AppShellSnapshot {
         do {
+            let settings = try settingsStore.load().recording
+            let permissionStatuses = permissionChecker.statuses()
+            let requiredPermissions = requiredPermissions(from: permissionStatuses)
+
+            if !requiredPermissions.isEmpty {
+                snapshot = permissionSnapshot(
+                    settings: settings,
+                    permissionStatuses: permissionStatuses,
+                    requiredPermissions: requiredPermissions
+                ).withHotkeyRegistrationError(hotkeyRegistrationErrorMessage)
+                return snapshot
+            }
+
             displays = try await captureSourceProvider.displays()
             windows = try await captureSourceProvider.windows()
             sourceValidator.update(displays: displays, windows: windows)
-            let settings = try settingsStore.load().recording
             snapshot = buildSnapshot(
                 settings: settings,
                 recordingState: recordingCoordinator.state
@@ -207,7 +219,7 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
     func requestPermission(for kind: PermissionKind) async -> AppShellSnapshot {
         await permissionRequester.requestPermission(for: kind)
         systemSettingsOpener.openPermissionSettings(for: kind)
-        return refreshPermissions()
+        return await refresh()
     }
 
     func refreshPermissions() -> AppShellSnapshot {
@@ -234,9 +246,7 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
             microphones: microphones
         )
         let permissionStatuses = permissionChecker.statuses()
-        let requiredPermissions = currentlyRequiredPermissions.filter {
-            permissionStatuses[$0] != .granted
-        }
+        let requiredPermissions = requiredPermissions(from: permissionStatuses)
         let status = status(
             for: recordingState,
             requiredPermissions: requiredPermissions,
@@ -327,6 +337,43 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
         }
 
         return targets.first?.mode ?? settings.defaultMode
+    }
+
+    private func requiredPermissions(
+        from statuses: [PermissionKind: PermissionStatus]
+    ) -> [PermissionKind] {
+        currentlyRequiredPermissions.filter {
+            statuses[$0] != .granted
+        }
+    }
+
+    private func permissionSnapshot(
+        settings: RecordingSettings,
+        permissionStatuses: [PermissionKind: PermissionStatus],
+        requiredPermissions: [PermissionKind]
+    ) -> AppShellSnapshot {
+        let targets = sourceTargetOptions(displays: displays, windows: windows)
+        let microphones = microphoneOptions()
+        return AppShellSnapshot(
+            status: .permissionRequired,
+            mode: settings.defaultMode,
+            selectedTarget: selectedTarget(
+                for: settings.defaultMode,
+                from: targets
+            ),
+            availableTargets: targets,
+            selectedMicrophoneID: selectedMicrophoneID(
+                settings: settings,
+                microphones: microphones
+            ),
+            microphones: microphones,
+            settings: settings,
+            permissionStatuses: permissionStatuses,
+            requiredPermissions: requiredPermissions,
+            errorMessage: nil,
+            elapsedTimeText: nil,
+            pendingSaveURL: nil
+        )
     }
 
     private func selectedTarget(

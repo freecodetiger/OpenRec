@@ -10,6 +10,7 @@ final class MockAppCoreAdapter: AppShellAdapter {
     private(set) var saveRecordingCallCount = 0
     private(set) var retrySaveCallCount = 0
     private(set) var discardRecordingCallCount = 0
+    private(set) var refreshCallCount = 0
     private(set) var refreshPermissionsCallCount = 0
     private(set) var selectModes: [CaptureMode] = []
     private(set) var selectTargetIDs: [String] = []
@@ -29,7 +30,11 @@ final class MockAppCoreAdapter: AppShellAdapter {
     }
 
     func refresh() async -> AppShellSnapshot {
-        snapshot
+        refreshCallCount += 1
+        if let permissionRefreshSnapshot {
+            snapshot = permissionRefreshSnapshot
+        }
+        return snapshot
     }
 
     func registerSavedHotkey() -> AppShellSnapshot {
@@ -104,7 +109,7 @@ final class MockAppCoreAdapter: AppShellAdapter {
 
     func requestPermission(for kind: PermissionKind) async -> AppShellSnapshot {
         requestedPermissions.append(kind)
-        return refreshPermissions()
+        return await refresh()
     }
 
     func refreshPermissions() -> AppShellSnapshot {

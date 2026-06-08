@@ -155,7 +155,9 @@ final class AppShellViewModel: ObservableObject {
     }
 
     func refreshPermissions() {
-        snapshot = adapter.refreshPermissions()
+        Task {
+            snapshot = await adapter.refresh()
+        }
     }
 
     func saveRecording() {
