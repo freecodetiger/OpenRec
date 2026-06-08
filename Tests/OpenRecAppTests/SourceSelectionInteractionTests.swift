@@ -73,6 +73,77 @@ import Testing
 }
 
 @MainActor
+@Test func windowSelectionOverlayPointerLocationHighlightsWindowFrame() {
+    let first = SourceTargetOption(
+        id: "window-1",
+        mode: .window,
+        source: .window(WindowID(rawValue: 1)),
+        title: "Safari - Notes",
+        subtitle: "Window recording target",
+        screenFrame: CGRect(x: 100, y: 100, width: 300, height: 200)
+    )
+    let second = SourceTargetOption(
+        id: "window-2",
+        mode: .window,
+        source: .window(WindowID(rawValue: 2)),
+        title: "Xcode - OpenRec",
+        subtitle: "Window recording target",
+        screenFrame: CGRect(x: 500, y: 100, width: 300, height: 200)
+    )
+    var overlay = WindowSelectionOverlayModel(targets: [first, second])
+
+    overlay.movePointer(
+        to: CGPoint(x: 650, y: 180),
+        in: CGSize(width: 1000, height: 600),
+        overlayScreenFrame: CGRect(x: 0, y: 0, width: 1000, height: 600)
+    )
+
+    #expect(overlay.highlightedTargetID == "window-2")
+}
+
+@MainActor
+@Test func windowSelectionOverlayPointerLocationClearsHighlightOutsideWindows() {
+    let target = SourceTargetOption(
+        id: "window-1",
+        mode: .window,
+        source: .window(WindowID(rawValue: 1)),
+        title: "Safari - Notes",
+        subtitle: "Window recording target",
+        screenFrame: CGRect(x: 100, y: 100, width: 300, height: 200)
+    )
+    var overlay = WindowSelectionOverlayModel(targets: [target])
+
+    overlay.movePointer(
+        to: CGPoint(x: 50, y: 50),
+        in: CGSize(width: 1000, height: 600),
+        overlayScreenFrame: CGRect(x: 0, y: 0, width: 1000, height: 600)
+    )
+
+    #expect(overlay.highlightedTargetID == nil)
+}
+
+@MainActor
+@Test func windowSelectionOverlayClickAtPointerLocationSelectsHighlightedWindow() {
+    let target = SourceTargetOption(
+        id: "window-1",
+        mode: .window,
+        source: .window(WindowID(rawValue: 1)),
+        title: "Safari - Notes",
+        subtitle: "Window recording target",
+        screenFrame: CGRect(x: 100, y: 100, width: 300, height: 200)
+    )
+    var overlay = WindowSelectionOverlayModel(targets: [target])
+
+    overlay.movePointer(
+        to: CGPoint(x: 150, y: 150),
+        in: CGSize(width: 1000, height: 600),
+        overlayScreenFrame: CGRect(x: 0, y: 0, width: 1000, height: 600)
+    )
+
+    #expect(overlay.clickHighlightedTarget() == "window-1")
+}
+
+@MainActor
 @Test func windowSelectionOverlayClickAppliesSelection() {
     let adapter = MockAppCoreAdapter(initialSnapshot: .ready)
     let viewModel = AppShellViewModel(adapter: adapter)

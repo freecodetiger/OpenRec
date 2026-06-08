@@ -29,6 +29,23 @@ struct WindowSelectionOverlayModel: Equatable {
         return targetID
     }
 
+    mutating func clickHighlightedTarget() -> String? {
+        guard let highlightedTargetID else { return nil }
+        return click(targetID: highlightedTargetID)
+    }
+
+    mutating func movePointer(
+        to location: CGPoint,
+        in viewSize: CGSize,
+        overlayScreenFrame: CGRect
+    ) {
+        highlightedTargetID = targetID(
+            at: location,
+            in: viewSize,
+            overlayScreenFrame: overlayScreenFrame
+        )
+    }
+
     mutating func cancel() -> String? {
         highlightedTargetID = nil
         return nil
@@ -45,6 +62,26 @@ struct WindowSelectionOverlayModel: Equatable {
         }
 
         return fallbackFrame(for: index, count: targets.count, in: viewSize)
+    }
+
+    private func targetID(
+        at location: CGPoint,
+        in viewSize: CGSize,
+        overlayScreenFrame: CGRect
+    ) -> String? {
+        for (index, target) in targets.enumerated().reversed() {
+            let frame = frame(
+                for: target,
+                index: index,
+                in: viewSize,
+                overlayScreenFrame: overlayScreenFrame
+            )
+            if frame.contains(location) {
+                return target.id
+            }
+        }
+
+        return nil
     }
 
     private func localFrame(
@@ -204,14 +241,18 @@ struct WindowSelectionOverlayView: View {
                 }
 
             GeometryReader { proxy in
-                ForEach(Array(model.targets.enumerated()), id: \.element.id) { index, target in
-                    let frame = model.frame(
-                        for: target,
-                        index: index,
-                        in: proxy.size,
-                        overlayScreenFrame: overlayScreenFrame
-                    )
-                    windowTarget(target, frame: frame)
+                ZStack {
+                    ForEach(Array(model.targets.enumerated()), id: \.element.id) { index, target in
+                        let frame = model.frame(
+                            for: target,
+                            index: index,
+                            in: proxy.size,
+                            overlayScreenFrame: overlayScreenFrame
+                        )
+                        windowTarget(target, frame: frame)
+                    }
+
+                    trackingLayer(in: proxy)
                 }
             }
         }
@@ -226,6 +267,46 @@ struct WindowSelectionOverlayView: View {
     func cancel() {
         _ = model.cancel()
         onCancel()
+    }
+
+    private func trackingLayer(in proxy: GeometryProxy) -> some View {
+        Rectangle()
+            .fill(Color.clear)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0, coordinateSpace: .local)
+                    .onChanged { value in
+                        model.movePointer(
+                            to: value.location,
+                            in: proxy.size,
+                            overlayScreenFrame: overlayScreenFrame
+                        )
+                    }
+                    .onEnded { value in
+                        model.movePointer(
+                            to: value.location,
+                            in: proxy.size,
+                            overlayScreenFrame: overlayScreenFrame
+                        )
+                        if let targetID = model.clickHighlightedTarget() {
+                            onSelect(targetID)
+                        } else {
+                            cancel()
+                        }
+                    }
+            )
+            .onContinuousHover { phase in
+                switch phase {
+                case let .active(location):
+                    model.movePointer(
+                        to: location,
+                        in: proxy.size,
+                        overlayScreenFrame: overlayScreenFrame
+                    )
+                case .ended:
+                    model.hover(targetID: nil)
+                }
+            }
     }
 
     private func windowTarget(_ target: SourceTargetOption, frame: CGRect) -> some View {
@@ -264,9 +345,6 @@ struct WindowSelectionOverlayView: View {
         }
         .buttonStyle(.plain)
         .position(x: frame.midX, y: frame.midY)
-        .onHover { isHovering in
-            model.hover(targetID: isHovering ? target.id : nil)
-        }
         .animation(.easeOut(duration: 0.12), value: isHighlighted)
     }
 
