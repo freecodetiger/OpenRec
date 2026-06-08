@@ -69,6 +69,34 @@ import Foundation
 }
 
 @MainActor
+@Test func viewModelUpdatesElapsedTimeWhileRecording() {
+    var now = Date(timeIntervalSinceReferenceDate: 1_000)
+    let adapter = MockAppCoreAdapter(initialSnapshot: .ready)
+    let viewModel = AppShellViewModel(adapter: adapter, now: { now })
+
+    viewModel.startRecording()
+    now = Date(timeIntervalSinceReferenceDate: 1_065)
+    viewModel.refreshElapsedTime()
+
+    #expect(viewModel.snapshot.elapsedTimeText == "01:05")
+}
+
+@MainActor
+@Test func viewModelPromptsForSaveAfterStoppingRecording() {
+    let adapter = MockAppCoreAdapter(initialSnapshot: .recording)
+    var awaitingSaveSnapshot = AppShellSnapshot.awaitingSave
+    awaitingSaveSnapshot.pendingSaveURL = URL(filePath: "/tmp/openrec-finished.mp4")
+    adapter.stopRecordingSnapshot = awaitingSaveSnapshot
+    let viewModel = AppShellViewModel(adapter: adapter)
+
+    viewModel.stopRecording()
+
+    #expect(adapter.stopRecordingCallCount == 1)
+    #expect(adapter.saveRecordingCallCount == 1)
+    #expect(viewModel.snapshot.status == .ready)
+}
+
+@MainActor
 @Test func viewModelHotkeyTriggerIsNoOpOutsideReadyAndRecordingStates() async {
     let hotkey = Hotkey(keyCode: 49, modifiers: [.command, .shift])
     let registry = InMemoryHotkeyRegistry()
@@ -523,6 +551,28 @@ import Foundation
 }
 
 @MainActor
+@Test func viewModelStopsProductionRecordingAndPromptsForSave() async {
+    let destinationURL = URL(filePath: "/Users/test/Desktop/openrec-finalized.mp4")
+    let savePanel = StubRecordingSavePanel(destinationURL: destinationURL)
+    let fileMover = SpyRecordingFileMover()
+    let adapter = recordingAdapter(savePanel: savePanel, fileMover: fileMover)
+    let viewModel = AppShellViewModel(adapter: adapter)
+
+    await viewModel.refresh()
+    viewModel.stopRecording()
+
+    #expect(savePanel.defaultFileNames == ["openrec-finalized.mp4"])
+    #expect(fileMover.moves == [
+        RecordedFileMove(
+            sourceURL: URL(filePath: "/tmp/openrec-finalized.mp4"),
+            destinationURL: destinationURL
+        )
+    ])
+    #expect(viewModel.snapshot.status == .ready)
+    #expect(viewModel.snapshot.pendingSaveURL == nil)
+}
+
+@MainActor
 @Test func productionAdapterSaveRecordingCancelKeepsAwaitingSaveAndPendingURL() async {
     let pendingURL = URL(filePath: "/tmp/openrec-finalized.mov")
     let savePanel = StubRecordingSavePanel(destinationURL: nil)
@@ -601,6 +651,50 @@ import Foundation
     #expect(fileMover.moves.isEmpty)
     #expect(snapshot.status == .ready)
     #expect(snapshot.pendingSaveURL == nil)
+}
+
+@MainActor
+private func recordingAdapter(
+    savePanel: StubRecordingSavePanel = StubRecordingSavePanel(
+        destinationURL: URL(filePath: "/Users/test/Desktop/openrec-finalized.mp4")
+    ),
+    fileMover: SpyRecordingFileMover = SpyRecordingFileMover()
+) -> OpenRecAppCoreAdapter {
+    let session = RecordingSession(
+        id: UUID(uuidString: "00000000-0000-0000-0000-000000000321")!,
+        source: .display(DisplayID(rawValue: 1)),
+        temporaryFileURL: URL(filePath: "/tmp/openrec-recording.tmp")
+    )
+    return OpenRecAppCoreAdapter(
+        settingsStore: SettingsStore(settingsDirectory: temporarySettingsDirectory()),
+        captureSourceProvider: InMemoryCaptureSourceProvider(
+            displays: [
+                DisplaySourceMetadata(
+                    id: DisplayID(rawValue: 1),
+                    name: "Main Display",
+                    pixelSize: CGSize(width: 1920, height: 1080),
+                    isAvailable: true
+                )
+            ],
+            windows: []
+        ),
+        audioDeviceProvider: InMemoryAudioDeviceProvider(devices: [
+            MicrophoneDevice(id: "mic-1", name: "Built-in Microphone", isDefault: true)
+        ]),
+        permissionChecker: PermissionChecker(provider: InMemoryPermissionStatusProvider(
+            statuses: Dictionary(uniqueKeysWithValues: PermissionKind.allCases.map { ($0, .granted) })
+        )),
+        hotkeyManager: HotkeyManager(registry: InMemoryHotkeyRegistry()),
+        recordingCoordinator: RecordingCoordinator(
+            permissionValidator: NoOpRecordingPermissionValidator(),
+            configurationResolver: NoOpRecordingConfigurationResolver(),
+            engine: NoOpRecordingEngine(),
+            finalizer: NoOpTemporaryRecordingFinalizer(),
+            initialState: .recording(session)
+        ),
+        savePanel: savePanel,
+        fileMover: fileMover
+    )
 }
 
 @MainActor

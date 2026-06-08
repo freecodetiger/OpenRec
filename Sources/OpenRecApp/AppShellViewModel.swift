@@ -29,9 +29,12 @@ final class AppShellViewModel: ObservableObject {
     @Published private(set) var snapshot: AppShellSnapshot
 
     private let adapter: AppShellAdapter
+    private let now: () -> Date
+    private var recordingStartedAt: Date?
 
-    init(adapter: AppShellAdapter) {
+    init(adapter: AppShellAdapter, now: @escaping () -> Date = Date.init) {
         self.adapter = adapter
+        self.now = now
         self.snapshot = adapter.snapshot
         self.adapter.onHotkeyTriggered = { [weak self] in
             self?.toggleRecording()
@@ -89,11 +92,25 @@ final class AppShellViewModel: ObservableObject {
     func startRecording() {
         guard canStartRecording else { return }
         snapshot = adapter.startRecording()
+        if snapshot.status == .recording {
+            recordingStartedAt = now()
+            refreshElapsedTime()
+        }
     }
 
     func stopRecording() {
         guard isRecording else { return }
         snapshot = adapter.stopRecording()
+        recordingStartedAt = nil
+        if snapshot.status == .awaitingSave {
+            snapshot = adapter.saveRecording()
+        }
+    }
+
+    func refreshElapsedTime() {
+        guard snapshot.status == .recording, let recordingStartedAt else { return }
+        let elapsedSeconds = max(0, Int(now().timeIntervalSince(recordingStartedAt)))
+        snapshot.elapsedTimeText = Self.formatElapsedTime(seconds: elapsedSeconds)
     }
 
     func toggleRecording() {
@@ -182,5 +199,11 @@ final class AppShellViewModel: ObservableObject {
 
     func selectScenario(_ scenario: AppShellSnapshot) {
         snapshot = adapter.selectScenario(scenario)
+    }
+
+    private static func formatElapsedTime(seconds: Int) -> String {
+        let minutes = seconds / 60
+        let seconds = seconds % 60
+        return String(format: "%02d:%02d", minutes, seconds)
     }
 }

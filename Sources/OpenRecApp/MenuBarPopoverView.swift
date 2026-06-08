@@ -5,6 +5,7 @@ import OpenRecCore
 struct MenuBarPopoverView: View {
     @ObservedObject var viewModel: AppShellViewModel
     @Environment(\.openWindow) private var openWindow
+    private let elapsedTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -33,6 +34,9 @@ struct MenuBarPopoverView: View {
         }
         .padding(16)
         .frame(width: 340)
+        .onReceive(elapsedTimer) { _ in
+            viewModel.refreshElapsedTime()
+        }
     }
 
     private var modePicker: some View {

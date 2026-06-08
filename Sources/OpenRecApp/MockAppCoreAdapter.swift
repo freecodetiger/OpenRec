@@ -18,6 +18,7 @@ final class MockAppCoreAdapter: AppShellAdapter {
     private(set) var requestedPermissions: [PermissionKind] = []
     private(set) var reopenApplicationCallCount = 0
     var permissionRefreshSnapshot: AppShellSnapshot?
+    var stopRecordingSnapshot: AppShellSnapshot?
     private let hotkeyManager: HotkeyManager?
 
     init(initialSnapshot: AppShellSnapshot = .ready, hotkeyManager: HotkeyManager? = nil) {
@@ -60,6 +61,10 @@ final class MockAppCoreAdapter: AppShellAdapter {
     func stopRecording() -> AppShellSnapshot {
         guard snapshot.status == .recording else { return snapshot }
         stopRecordingCallCount += 1
+        if let stopRecordingSnapshot {
+            snapshot = stopRecordingSnapshot
+            return snapshot
+        }
         snapshot.status = .ready
         snapshot.elapsedTimeText = nil
         return snapshot
