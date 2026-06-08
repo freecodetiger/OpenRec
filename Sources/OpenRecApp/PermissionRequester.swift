@@ -2,7 +2,6 @@ import Foundation
 import OpenRecCore
 
 #if os(macOS)
-import AppKit
 import AVFoundation
 import CoreGraphics
 #endif
@@ -23,7 +22,6 @@ final class SystemPermissionRequester: PermissionRequesting {
         case .screenRecording:
             #if os(macOS)
             _ = CGRequestScreenCaptureAccess()
-            NSApplication.shared.terminate(nil)
             #endif
         case .accessibility, .inputMonitoring:
             return

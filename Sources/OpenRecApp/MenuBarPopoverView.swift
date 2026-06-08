@@ -96,9 +96,15 @@ struct MenuBarPopoverView: View {
             VStack(alignment: .leading, spacing: 6) {
                 ForEach(PermissionDisplayItem.items(for: viewModel.snapshot), id: \.kind) { item in
                     if item.isRequired {
-                        Label(item.statusText, systemImage: "exclamationmark.triangle")
-                            .font(.caption)
-                            .foregroundStyle(.orange)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Label(item.statusText, systemImage: "exclamationmark.triangle")
+                            if item.kind == .screenRecording {
+                                Text("After changing this permission, quit and reopen OpenRec.")
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .font(.caption)
+                        .foregroundStyle(.orange)
                     }
                 }
             }
