@@ -202,6 +202,101 @@ import Foundation
 }
 
 @MainActor
+@Test func requestingWindowWorkflowStoresPreviousSelectionAndEntersSelectingState() {
+    let adapter = MockAppCoreAdapter(initialSnapshot: .ready)
+    let viewModel = AppShellViewModel(adapter: adapter)
+
+    let entered = viewModel.requestWindowRecordingWorkflow()
+
+    #expect(entered == true)
+    #expect(viewModel.windowRecordingWorkflow == .selectingWindow(previousMode: .display, previousTargetID: "display-1"))
+    #expect(adapter.selectModes.isEmpty)
+    #expect(adapter.selectTargetIDs.isEmpty)
+}
+
+@MainActor
+@Test func selectingWindowTargetAppliesWindowModeAndShowsControlBarState() {
+    let adapter = MockAppCoreAdapter(initialSnapshot: .ready)
+    let viewModel = AppShellViewModel(adapter: adapter)
+
+    _ = viewModel.requestWindowRecordingWorkflow()
+    viewModel.selectWindowForRecording(targetID: "window-42")
+
+    #expect(adapter.selectModes == [.window])
+    #expect(adapter.selectTargetIDs == ["window-42"])
+    #expect(viewModel.snapshot.mode == .window)
+    #expect(viewModel.windowRecordingWorkflow == .configuringWindow(previousMode: .display, previousTargetID: "display-1", selectedTargetID: "window-42"))
+}
+
+@MainActor
+@Test func cancelingWindowWorkflowRestoresPreviousSelection() {
+    let adapter = MockAppCoreAdapter(initialSnapshot: .ready)
+    let viewModel = AppShellViewModel(adapter: adapter)
+
+    _ = viewModel.requestWindowRecordingWorkflow()
+    viewModel.selectWindowForRecording(targetID: "window-42")
+    viewModel.cancelWindowRecordingWorkflow()
+
+    #expect(viewModel.windowRecordingWorkflow == .idle)
+    #expect(viewModel.snapshot.mode == .display)
+    #expect(viewModel.snapshot.selectedTarget.id == "display-1")
+}
+
+@MainActor
+@Test func startingConfiguredWindowRecordingClearsWorkflowAndStartsRecording() {
+    let adapter = MockAppCoreAdapter(initialSnapshot: .ready)
+    let viewModel = AppShellViewModel(adapter: adapter)
+
+    _ = viewModel.requestWindowRecordingWorkflow()
+    viewModel.selectWindowForRecording(targetID: "window-42")
+    viewModel.startConfiguredWindowRecording()
+
+    #expect(viewModel.windowRecordingWorkflow == .idle)
+    #expect(adapter.startRecordingCallCount == 1)
+    #expect(viewModel.snapshot.status == .recording)
+}
+
+@MainActor
+@Test func windowControlBarSettingsPersistThroughAdapter() {
+    let adapter = MockAppCoreAdapter(initialSnapshot: .ready)
+    let viewModel = AppShellViewModel(adapter: adapter)
+
+    var settings = viewModel.snapshot.settings
+    settings.videoCodec = .hevc
+    settings.frameRate = .fps60
+    viewModel.updateWindowControlBarSettings(settings)
+
+    #expect(adapter.updatedSettings.map(\.videoCodec) == [.hevc])
+    #expect(adapter.updatedSettings.map(\.frameRate) == [.fps60])
+    #expect(viewModel.snapshot.settings.videoCodec == .hevc)
+}
+
+@MainActor
+@Test func windowControlBarSettingsKeepConfiguredWindowTarget() {
+    var snapshot = AppShellSnapshot.ready
+    let secondWindow = SourceTargetOption(
+        id: "window-99",
+        mode: .window,
+        source: .window(WindowID(rawValue: 99)),
+        title: "Notes - Planning",
+        subtitle: "Window recording target"
+    )
+    snapshot.availableTargets.append(secondWindow)
+    let adapter = MockAppCoreAdapter(initialSnapshot: snapshot)
+    let viewModel = AppShellViewModel(adapter: adapter)
+
+    _ = viewModel.requestWindowRecordingWorkflow()
+    viewModel.selectWindowForRecording(targetID: "window-99")
+    var settings = viewModel.snapshot.settings
+    settings.videoCodec = .hevc
+    viewModel.updateWindowControlBarSettings(settings)
+
+    #expect(adapter.updatedSettings.map(\.videoCodec) == [.hevc])
+    #expect(adapter.selectTargetIDs == ["window-99", "window-99"])
+    #expect(viewModel.snapshot.selectedTarget.id == "window-99")
+}
+
+@MainActor
 @Test func viewModelExposesSaveFlowActionsOnlyWhileAwaitingSave() {
     let adapter = MockAppCoreAdapter(initialSnapshot: .awaitingSave)
     let viewModel = AppShellViewModel(adapter: adapter)

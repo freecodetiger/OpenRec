@@ -58,6 +58,18 @@ These checks require real macOS hardware because ScreenCaptureKit, permissions, 
 - [ ] Esc cancels window selection without starting a recording.
 - [ ] Closed or unavailable selected windows trigger a recoverable reselect flow.
 
+## Window Recording Visual Workflow
+
+- [ ] Open OpenRec from the menu bar and switch to Window Recording.
+- [ ] Verify the menu popover closes and the full-screen window selection overlay appears.
+- [ ] Hover several windows and verify highlight follows the real window bounds.
+- [ ] Click a window and verify the control bar appears inside the selected window at the bottom.
+- [ ] Change format, codec, frame rate, quality, and microphone presets.
+- [ ] Quit and relaunch OpenRec, then verify the changed settings persisted.
+- [ ] Press Start and verify the control bar disappears before recording starts.
+- [ ] Stop recording from the menu bar and verify the save location prompt appears.
+- [ ] Cancel from selection and from the control bar, verifying the previous source is restored.
+
 ## Window Recording
 
 - [ ] Recording captures the selected window, not the full display.

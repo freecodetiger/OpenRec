@@ -39,6 +39,12 @@ enum AppShellStatus: Equatable, Sendable {
     }
 }
 
+enum WindowRecordingWorkflowState: Equatable, Sendable {
+    case idle
+    case selectingWindow(previousMode: CaptureMode, previousTargetID: String)
+    case configuringWindow(previousMode: CaptureMode, previousTargetID: String, selectedTargetID: String)
+}
+
 struct SourceTargetOption: Equatable, Identifiable, Sendable {
     var id: String
     var mode: CaptureMode

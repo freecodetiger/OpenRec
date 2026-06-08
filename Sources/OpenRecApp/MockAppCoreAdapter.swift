@@ -14,6 +14,7 @@ final class MockAppCoreAdapter: AppShellAdapter {
     private(set) var refreshPermissionsCallCount = 0
     private(set) var selectModes: [CaptureMode] = []
     private(set) var selectTargetIDs: [String] = []
+    private(set) var updatedSettings: [RecordingSettings] = []
     private(set) var openedPermissionSettings: [PermissionKind] = []
     private(set) var requestedPermissions: [PermissionKind] = []
     private(set) var reopenApplicationCallCount = 0
@@ -96,6 +97,7 @@ final class MockAppCoreAdapter: AppShellAdapter {
     }
 
     func updateSettings(_ settings: RecordingSettings) -> AppShellSnapshot {
+        updatedSettings.append(settings)
         snapshot.settings = settings
         snapshot.mode = settings.defaultMode
         if let target = snapshot.availableTargets.first(where: { $0.mode == settings.defaultMode }) {

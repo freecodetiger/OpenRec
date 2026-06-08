@@ -2,8 +2,31 @@ import AppKit
 import SwiftUI
 import OpenRecCore
 
+enum MenuModeSelectionHandler {
+    static func handle(
+        selectedMode: CaptureMode,
+        currentMode: CaptureMode,
+        selectMode: (CaptureMode) -> Void,
+        requestWindowWorkflow: () -> Void,
+        closeMenu: () -> Void
+    ) {
+        guard selectedMode != currentMode else { return }
+
+        switch selectedMode {
+        case .display:
+            selectMode(selectedMode)
+        case .window:
+            closeMenu()
+            requestWindowWorkflow()
+        }
+    }
+}
+
 struct MenuBarPopoverView: View {
     @ObservedObject var viewModel: AppShellViewModel
+    var onRequestWindowRecordingWorkflow: () -> Void = {}
+    var onCloseMenu: () -> Void = {}
+
     @Environment(\.openWindow) private var openWindow
     private let elapsedTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
@@ -47,7 +70,15 @@ struct MenuBarPopoverView: View {
 
             Picker("Mode", selection: Binding(
                 get: { viewModel.snapshot.mode },
-                set: { viewModel.selectMode($0) }
+                set: { selectedMode in
+                    MenuModeSelectionHandler.handle(
+                        selectedMode: selectedMode,
+                        currentMode: viewModel.snapshot.mode,
+                        selectMode: { viewModel.selectMode($0) },
+                        requestWindowWorkflow: onRequestWindowRecordingWorkflow,
+                        closeMenu: onCloseMenu
+                    )
+                }
             )) {
                 Text("Display Recording").tag(CaptureMode.display)
                 Text("Window Recording").tag(CaptureMode.window)

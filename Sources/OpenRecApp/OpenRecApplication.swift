@@ -5,6 +5,7 @@ import SwiftUI
 struct OpenRecApplication: App {
     @StateObject private var viewModel: AppShellViewModel
     @StateObject private var statusItemController: AppKitStatusItemController
+    @StateObject private var windowRecordingWorkflowCoordinator: WindowRecordingWorkflowCoordinator
 
     init() {
         let adapter: AppShellAdapter
@@ -17,13 +18,27 @@ struct OpenRecApplication: App {
         }
         let model = AppShellViewModel(adapter: adapter)
         model.startHotkeyMonitoring()
+        let workflowCoordinator = WindowRecordingWorkflowCoordinator(viewModel: model)
+        let statusController = AppKitStatusItemController(viewModel: model)
+        workflowCoordinator.closeMenu = { [weak statusController] in
+            statusController?.closePopover()
+            NSApp.keyWindow?.close()
+        }
+        statusController.onRequestWindowRecordingWorkflow = { [weak workflowCoordinator] in
+            workflowCoordinator?.begin()
+        }
         _viewModel = StateObject(wrappedValue: model)
-        _statusItemController = StateObject(wrappedValue: AppKitStatusItemController(viewModel: model))
+        _statusItemController = StateObject(wrappedValue: statusController)
+        _windowRecordingWorkflowCoordinator = StateObject(wrappedValue: workflowCoordinator)
     }
 
     var body: some Scene {
         MenuBarExtra {
-            MenuBarPopoverView(viewModel: viewModel)
+            MenuBarPopoverView(
+                viewModel: viewModel,
+                onRequestWindowRecordingWorkflow: windowRecordingWorkflowCoordinator.begin,
+                onCloseMenu: windowRecordingWorkflowCoordinator.closeMenu
+            )
                 .task {
                     await viewModel.refresh()
                 }
@@ -33,6 +48,9 @@ struct OpenRecApplication: App {
         .menuBarExtraStyle(.window)
         .onChange(of: viewModel.snapshot.status) { _, _ in
             statusItemController.refreshSymbol()
+            if viewModel.snapshot.status != .ready {
+                windowRecordingWorkflowCoordinator.dismissActivePanels()
+            }
         }
 
         WindowGroup("Preferences", id: "preferences") {

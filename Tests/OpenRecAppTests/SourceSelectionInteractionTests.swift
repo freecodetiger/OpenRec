@@ -4,6 +4,40 @@ import Testing
 @testable import OpenRecApp
 
 @MainActor
+@Test func menuModeSelectionForWindowRequestsVisualWorkflow() {
+    var requestedWindowWorkflow = false
+    var selectedModes: [CaptureMode] = []
+
+    MenuModeSelectionHandler.handle(
+        selectedMode: .window,
+        currentMode: .display,
+        selectMode: { selectedModes.append($0) },
+        requestWindowWorkflow: { requestedWindowWorkflow = true },
+        closeMenu: {}
+    )
+
+    #expect(requestedWindowWorkflow == true)
+    #expect(selectedModes.isEmpty)
+}
+
+@MainActor
+@Test func menuModeSelectionForDisplayUsesDirectModeSelection() {
+    var requestedWindowWorkflow = false
+    var selectedModes: [CaptureMode] = []
+
+    MenuModeSelectionHandler.handle(
+        selectedMode: .display,
+        currentMode: .window,
+        selectMode: { selectedModes.append($0) },
+        requestWindowWorkflow: { requestedWindowWorkflow = true },
+        closeMenu: {}
+    )
+
+    #expect(requestedWindowWorkflow == false)
+    #expect(selectedModes == [.display])
+}
+
+@MainActor
 @Test func sourceSelectionDraftShowsOnlyTargetsForTheCurrentMode() {
     var draft = SourceSelectionDraft(snapshot: .ready)
 
@@ -163,4 +197,49 @@ import Testing
     #expect(frame.width > 0)
     #expect(frame.height > 0)
     #expect(frame != .zero)
+}
+
+@MainActor
+@Test func windowControlBarLayoutFitsInsideNormalWindowFrame() {
+    let layout = WindowRecordingControlBarLayout(
+        targetFrame: CGRect(x: 100, y: 100, width: 900, height: 600),
+        visibleScreenFrame: CGRect(x: 0, y: 0, width: 1440, height: 900)
+    )
+
+    let frame = layout.panelFrame()
+
+    #expect(frame.minX >= 100)
+    #expect(frame.maxX <= 1000)
+    #expect(frame.minY >= 100)
+    #expect(frame.maxY <= 700)
+    #expect(frame.width <= 760)
+}
+
+@MainActor
+@Test func windowControlBarLayoutClampsNearScreenEdge() {
+    let layout = WindowRecordingControlBarLayout(
+        targetFrame: CGRect(x: 10, y: 10, width: 420, height: 180),
+        visibleScreenFrame: CGRect(x: 0, y: 0, width: 500, height: 260)
+    )
+
+    let frame = layout.panelFrame()
+
+    #expect(frame.minX >= 0)
+    #expect(frame.minY >= 0)
+    #expect(frame.maxX <= 500)
+    #expect(frame.maxY <= 260)
+}
+
+@MainActor
+@Test func windowControlBarLayoutFallsBackWhenTargetFrameMissing() {
+    let layout = WindowRecordingControlBarLayout(
+        targetFrame: nil,
+        visibleScreenFrame: CGRect(x: 0, y: 0, width: 1440, height: 900)
+    )
+
+    let frame = layout.panelFrame()
+
+    #expect(frame.width > 0)
+    #expect(frame.height > 0)
+    #expect(frame.midX == 720)
 }
