@@ -28,13 +28,21 @@ swift build
 swift test
 ```
 
-For local development, the SwiftPM executable can be launched with:
+For local app permission testing, launch the development `.app` wrapper with:
+
+```sh
+scripts/launch-dev-app.sh
+```
+
+This wrapper uses the stable bundle identifier `dev.freecodetiger.OpenRec` and a stable local code signing requirement so macOS TCC permissions do not drift across rebuilds. If Screen Recording or Microphone still appears denied after switching launch methods, remove the old OpenRec entry in System Settings, then grant permissions again to this development app.
+
+For quick non-permission development, the SwiftPM executable can also be launched with:
 
 ```sh
 swift run OpenRecApp
 ```
 
-This is a developer launch path, not an end-user app distribution path. macOS permissions such as Screen Recording, Microphone, and global hotkey access must still be granted on real hardware, and some permission prompts are easier to validate from a packaged `.app` once that archive path exists.
+These are developer launch paths, not end-user app distribution paths. macOS permissions such as Screen Recording, Microphone, and global hotkey access must still be granted on real hardware.
 
 For release tags, CI also creates a source ZIP artifact:
 
