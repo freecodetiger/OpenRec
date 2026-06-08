@@ -99,8 +99,8 @@ final class MockAppCoreAdapter: AppShellAdapter {
     func updateSettings(_ settings: RecordingSettings) -> AppShellSnapshot {
         updatedSettings.append(settings)
         snapshot.settings = settings
-        snapshot.mode = settings.defaultMode
-        if let target = snapshot.availableTargets.first(where: { $0.mode == settings.defaultMode }) {
+        snapshot.mode = .display
+        if let target = snapshot.availableTargets.first(where: { $0.mode == .display }) {
             snapshot.selectedTarget = target
         }
         if let microphoneDeviceID = settings.microphoneDeviceID,

@@ -60,7 +60,8 @@ These checks require real macOS hardware because ScreenCaptureKit, permissions, 
 
 ## Window Recording Visual Workflow
 
-- [ ] Open OpenRec from the menu bar and switch to Window Recording.
+- [ ] Open OpenRec from the menu bar and verify the source actions show Full Screen, Window, and Application as peer options.
+- [ ] Click Window.
 - [ ] Verify the menu popover closes and the full-screen window selection overlay appears.
 - [ ] Hover several windows and verify highlight follows the real window bounds.
 - [ ] Click a window and verify the control bar appears inside the selected window at the bottom.
@@ -68,7 +69,17 @@ These checks require real macOS hardware because ScreenCaptureKit, permissions, 
 - [ ] Quit and relaunch OpenRec, then verify the changed settings persisted.
 - [ ] Press Start and verify the control bar disappears before recording starts.
 - [ ] Stop recording from the menu bar and verify the save location prompt appears.
+- [ ] Cancel the save location prompt and verify the recording is discarded and OpenRec returns to Ready.
 - [ ] Cancel from selection and from the control bar, verifying the previous source is restored.
+
+## Application Recording Visual Workflow
+
+- [ ] Open OpenRec from the menu bar and click Application.
+- [ ] Verify the application chooser opens with applications grouped by their visible windows.
+- [ ] Choose an application and verify window selection shows only windows from that application.
+- [ ] Choose a window and verify the same preset control bar appears inside the selected window.
+- [ ] Press Start and verify the bar disappears before recording starts.
+- [ ] Relaunch OpenRec and verify it starts with Full Screen as the default source.
 
 ## Window Recording
 

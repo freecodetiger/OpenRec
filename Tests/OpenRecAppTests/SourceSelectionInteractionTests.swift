@@ -4,40 +4,6 @@ import Testing
 @testable import OpenRecApp
 
 @MainActor
-@Test func menuModeSelectionForWindowRequestsVisualWorkflow() {
-    var requestedWindowWorkflow = false
-    var selectedModes: [CaptureMode] = []
-
-    MenuModeSelectionHandler.handle(
-        selectedMode: .window,
-        currentMode: .display,
-        selectMode: { selectedModes.append($0) },
-        requestWindowWorkflow: { requestedWindowWorkflow = true },
-        closeMenu: {}
-    )
-
-    #expect(requestedWindowWorkflow == true)
-    #expect(selectedModes.isEmpty)
-}
-
-@MainActor
-@Test func menuModeSelectionForDisplayUsesDirectModeSelection() {
-    var requestedWindowWorkflow = false
-    var selectedModes: [CaptureMode] = []
-
-    MenuModeSelectionHandler.handle(
-        selectedMode: .display,
-        currentMode: .window,
-        selectMode: { selectedModes.append($0) },
-        requestWindowWorkflow: { requestedWindowWorkflow = true },
-        closeMenu: {}
-    )
-
-    #expect(requestedWindowWorkflow == false)
-    #expect(selectedModes == [.display])
-}
-
-@MainActor
 @Test func sourceSelectionDraftShowsOnlyTargetsForTheCurrentMode() {
     var draft = SourceSelectionDraft(snapshot: .ready)
 

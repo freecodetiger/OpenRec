@@ -100,7 +100,7 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
 
     func refresh() async -> AppShellSnapshot {
         do {
-            let settings = try settingsStore.load().recording
+            let settings = normalizedSettings(try settingsStore.load().recording)
             let permissionStatuses = permissionChecker.statuses()
             let requiredPermissions = requiredPermissions(from: permissionStatuses)
 
@@ -180,8 +180,16 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
     }
 
     func selectMode(_ mode: CaptureMode) -> AppShellSnapshot {
+        guard mode == .display else {
+            snapshot.mode = mode
+            if let target = snapshot.availableTargets.first(where: { $0.mode == mode }) {
+                snapshot.selectedTarget = target
+            }
+            return snapshot
+        }
+
         var settings = snapshot.settings
-        settings.defaultMode = mode
+        settings.defaultMode = .display
         return updateSettings(settings)
     }
 
@@ -206,6 +214,7 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
     }
 
     func updateSettings(_ settings: RecordingSettings) -> AppShellSnapshot {
+        let settings = normalizedSettings(settings)
         guard save(settings: settings) else {
             return snapshot
         }
@@ -284,9 +293,13 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
         }
 
         guard let destinationURL = savePanel.destinationURL(defaultFileName: pendingURL.lastPathComponent) else {
-            let error = recordingCoordinator.saveCancelled()
-            snapshot = buildSnapshot(settings: snapshot.settings, recordingState: recordingCoordinator.state)
-            snapshot.errorMessage = AppErrorPresenter.message(for: error)
+            do {
+                try recordingCoordinator.discard()
+                snapshot = buildSnapshot(settings: snapshot.settings, recordingState: recordingCoordinator.state)
+            } catch {
+                snapshot = buildSnapshot(settings: snapshot.settings, recordingState: recordingCoordinator.state)
+                    .withError(AppErrorPresenter.message(for: error))
+            }
             return snapshot
         }
 
@@ -327,7 +340,7 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
 
     private func save(settings: RecordingSettings) -> Bool {
         do {
-            try settingsStore.save(AppSettings(schemaVersion: 1, recording: settings))
+            try settingsStore.save(AppSettings(schemaVersion: 1, recording: normalizedSettings(settings)))
             return true
         } catch {
             snapshot = snapshot.withError(AppErrorPresenter.message(for: error))
@@ -335,15 +348,21 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
         }
     }
 
+    private func normalizedSettings(_ settings: RecordingSettings) -> RecordingSettings {
+        var normalized = settings
+        normalized.defaultMode = .display
+        return normalized
+    }
+
     private func selectedMode(
         settings: RecordingSettings,
         targets: [SourceTargetOption]
     ) -> CaptureMode {
-        if targets.contains(where: { $0.mode == settings.defaultMode }) {
-            return settings.defaultMode
+        if targets.contains(where: { $0.mode == .display }) {
+            return .display
         }
 
-        return targets.first?.mode ?? settings.defaultMode
+        return targets.first?.mode ?? .display
     }
 
     private func requiredPermissions(
@@ -363,9 +382,9 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
         let microphones = microphoneOptions()
         return AppShellSnapshot(
             status: .permissionRequired,
-            mode: settings.defaultMode,
+            mode: .display,
             selectedTarget: selectedTarget(
-                for: settings.defaultMode,
+                for: .display,
                 from: targets
             ),
             availableTargets: targets,

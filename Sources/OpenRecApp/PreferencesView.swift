@@ -29,10 +29,6 @@ struct PreferencesView: View {
             Form {
                 settingsError
 
-                Picker("Default mode", selection: settingBinding(\.defaultMode)) {
-                    Text("Display Recording").tag(CaptureMode.display)
-                    Text("Window Recording").tag(CaptureMode.window)
-                }
                 Toggle("Show system cursor", isOn: settingBinding(\.includeCursor))
             }
             .padding(20)

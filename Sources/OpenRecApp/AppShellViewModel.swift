@@ -85,6 +85,21 @@ final class AppShellViewModel: ObservableObject {
         snapshot.availableTargets.filter { $0.mode == snapshot.mode }
     }
 
+    var applicationTargets: [ApplicationTargetOption] {
+        let windows = snapshot.availableTargets.filter { $0.mode == .window }
+        let grouped = Dictionary(grouping: windows, by: \.applicationName)
+
+        return grouped
+            .map { applicationName, windows in
+                ApplicationTargetOption(
+                    id: applicationName,
+                    title: applicationName,
+                    windows: windows.sorted { $0.title < $1.title }
+                )
+            }
+            .sorted { $0.title < $1.title }
+    }
+
     @MainActor
     func refresh() async {
         snapshot = await adapter.refresh()
@@ -144,9 +159,47 @@ final class AppShellViewModel: ObservableObject {
         return true
     }
 
+    func requestApplicationRecordingWorkflow() -> Bool {
+        guard snapshot.status == .ready else { return false }
+        windowRecordingWorkflow = .selectingApplication(
+            previousMode: snapshot.mode,
+            previousTargetID: snapshot.selectedTarget.id
+        )
+        return true
+    }
+
+    func selectApplicationForRecording(applicationName: String) {
+        guard case let .selectingApplication(previousMode, previousTargetID) = windowRecordingWorkflow,
+              applicationTargets.contains(where: { $0.id == applicationName }) else {
+            return
+        }
+
+        windowRecordingWorkflow = .selectingApplicationWindow(
+            previousMode: previousMode,
+            previousTargetID: previousTargetID,
+            applicationName: applicationName
+        )
+    }
+
     func selectWindowForRecording(targetID: String) {
-        guard case let .selectingWindow(previousMode, previousTargetID) = windowRecordingWorkflow,
-              let target = snapshot.availableTargets.first(where: { $0.id == targetID && $0.mode == .window }) else {
+        let previousSelection: (mode: CaptureMode, targetID: String)
+        let allowedTargetIDs: Set<String>?
+
+        switch windowRecordingWorkflow {
+        case let .selectingWindow(previousMode, previousTargetID):
+            previousSelection = (previousMode, previousTargetID)
+            allowedTargetIDs = nil
+        case let .selectingApplicationWindow(previousMode, previousTargetID, applicationName):
+            previousSelection = (previousMode, previousTargetID)
+            allowedTargetIDs = Set(
+                applicationTargets.first(where: { $0.id == applicationName })?.windows.map(\.id) ?? []
+            )
+        case .idle, .selectingApplication, .configuringWindow:
+            return
+        }
+
+        guard let target = snapshot.availableTargets.first(where: { $0.id == targetID && $0.mode == .window }),
+              allowedTargetIDs?.contains(target.id) ?? true else {
             return
         }
 
@@ -155,8 +208,8 @@ final class AppShellViewModel: ObservableObject {
         }
         snapshot = adapter.selectTarget(id: target.id)
         windowRecordingWorkflow = .configuringWindow(
-            previousMode: previousMode,
-            previousTargetID: previousTargetID,
+            previousMode: previousSelection.mode,
+            previousTargetID: previousSelection.targetID,
             selectedTargetID: target.id
         )
     }
@@ -167,6 +220,8 @@ final class AppShellViewModel: ObservableObject {
         case .idle:
             previousSelection = nil
         case let .selectingWindow(previousMode, previousTargetID),
+             let .selectingApplication(previousMode, previousTargetID),
+             let .selectingApplicationWindow(previousMode, previousTargetID, _),
              let .configuringWindow(previousMode, previousTargetID, _):
             previousSelection = (previousMode, previousTargetID)
         }

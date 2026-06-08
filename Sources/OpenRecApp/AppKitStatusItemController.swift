@@ -7,6 +7,7 @@ final class AppKitStatusItemController: NSObject, ObservableObject {
     private var statusItem: NSStatusItem?
     private let popover: NSPopover
     var onRequestWindowRecordingWorkflow: (() -> Void)?
+    var onRequestApplicationRecordingWorkflow: (() -> Void)?
 
     init(viewModel: AppShellViewModel) {
         self.viewModel = viewModel
@@ -20,6 +21,9 @@ final class AppKitStatusItemController: NSObject, ObservableObject {
                 viewModel: viewModel,
                 onRequestWindowRecordingWorkflow: { [weak self] in
                     self?.onRequestWindowRecordingWorkflow?()
+                },
+                onRequestApplicationRecordingWorkflow: { [weak self] in
+                    self?.onRequestApplicationRecordingWorkflow?()
                 },
                 onCloseMenu: { [weak self] in
                     self?.closePopover()

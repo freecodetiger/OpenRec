@@ -42,7 +42,19 @@ enum AppShellStatus: Equatable, Sendable {
 enum WindowRecordingWorkflowState: Equatable, Sendable {
     case idle
     case selectingWindow(previousMode: CaptureMode, previousTargetID: String)
+    case selectingApplication(previousMode: CaptureMode, previousTargetID: String)
+    case selectingApplicationWindow(previousMode: CaptureMode, previousTargetID: String, applicationName: String)
     case configuringWindow(previousMode: CaptureMode, previousTargetID: String, selectedTargetID: String)
+}
+
+struct ApplicationTargetOption: Equatable, Identifiable, Sendable {
+    var id: String
+    var title: String
+    var windows: [SourceTargetOption]
+
+    var subtitle: String {
+        windows.count == 1 ? "1 window" : "\(windows.count) windows"
+    }
 }
 
 struct SourceTargetOption: Equatable, Identifiable, Sendable {
@@ -55,6 +67,13 @@ struct SourceTargetOption: Equatable, Identifiable, Sendable {
 
     var summary: String {
         title
+    }
+
+    var applicationName: String {
+        let parts = title.split(separator: "-", maxSplits: 1).map {
+            $0.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return parts.first?.isEmpty == false ? parts[0] : title
     }
 }
 

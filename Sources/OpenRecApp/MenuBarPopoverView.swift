@@ -2,29 +2,10 @@ import AppKit
 import SwiftUI
 import OpenRecCore
 
-enum MenuModeSelectionHandler {
-    static func handle(
-        selectedMode: CaptureMode,
-        currentMode: CaptureMode,
-        selectMode: (CaptureMode) -> Void,
-        requestWindowWorkflow: () -> Void,
-        closeMenu: () -> Void
-    ) {
-        guard selectedMode != currentMode else { return }
-
-        switch selectedMode {
-        case .display:
-            selectMode(selectedMode)
-        case .window:
-            closeMenu()
-            requestWindowWorkflow()
-        }
-    }
-}
-
 struct MenuBarPopoverView: View {
     @ObservedObject var viewModel: AppShellViewModel
     var onRequestWindowRecordingWorkflow: () -> Void = {}
+    var onRequestApplicationRecordingWorkflow: () -> Void = {}
     var onCloseMenu: () -> Void = {}
 
     @Environment(\.openWindow) private var openWindow
@@ -36,7 +17,7 @@ struct MenuBarPopoverView: View {
 
             Divider()
 
-            modePicker
+            sourceActions
             targetPicker
             microphonePicker
             permissionDetails
@@ -62,29 +43,50 @@ struct MenuBarPopoverView: View {
         }
     }
 
-    private var modePicker: some View {
+    private var sourceActions: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Mode")
+            Text("Source")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-            Picker("Mode", selection: Binding(
-                get: { viewModel.snapshot.mode },
-                set: { selectedMode in
-                    MenuModeSelectionHandler.handle(
-                        selectedMode: selectedMode,
-                        currentMode: viewModel.snapshot.mode,
-                        selectMode: { viewModel.selectMode($0) },
-                        requestWindowWorkflow: onRequestWindowRecordingWorkflow,
-                        closeMenu: onCloseMenu
-                    )
+            HStack(spacing: 8) {
+                Button {
+                    onCloseMenu()
+                    viewModel.selectMode(.display)
+                } label: {
+                    sourceActionLabel("Full Screen", systemImage: "rectangle.inset.filled")
                 }
-            )) {
-                Text("Display Recording").tag(CaptureMode.display)
-                Text("Window Recording").tag(CaptureMode.window)
+                .buttonStyle(.bordered)
+
+                Button {
+                    onCloseMenu()
+                    onRequestWindowRecordingWorkflow()
+                } label: {
+                    sourceActionLabel("Window", systemImage: "macwindow")
+                }
+                .buttonStyle(.bordered)
+
+                Button {
+                    onCloseMenu()
+                    onRequestApplicationRecordingWorkflow()
+                } label: {
+                    sourceActionLabel("Application", systemImage: "square.stack.3d.up")
+                }
+                .buttonStyle(.bordered)
             }
-            .pickerStyle(.segmented)
         }
+    }
+
+    private func sourceActionLabel(_ title: String, systemImage: String) -> some View {
+        VStack(spacing: 6) {
+            Image(systemName: systemImage)
+                .font(.system(size: 18, weight: .semibold))
+            Text(title)
+                .font(.caption)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+        .frame(maxWidth: .infinity, minHeight: 58)
     }
 
     private var targetPicker: some View {

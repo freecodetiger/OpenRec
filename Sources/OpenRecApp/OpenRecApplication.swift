@@ -27,6 +27,9 @@ struct OpenRecApplication: App {
         statusController.onRequestWindowRecordingWorkflow = { [weak workflowCoordinator] in
             workflowCoordinator?.begin()
         }
+        statusController.onRequestApplicationRecordingWorkflow = { [weak workflowCoordinator] in
+            workflowCoordinator?.beginApplication()
+        }
         DispatchQueue.main.async {
             statusController.installIfNeeded()
         }
@@ -40,6 +43,7 @@ struct OpenRecApplication: App {
             MenuBarPopoverView(
                 viewModel: viewModel,
                 onRequestWindowRecordingWorkflow: windowRecordingWorkflowCoordinator.begin,
+                onRequestApplicationRecordingWorkflow: windowRecordingWorkflowCoordinator.beginApplication,
                 onCloseMenu: windowRecordingWorkflowCoordinator.closeMenu
             )
                 .task {

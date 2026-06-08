@@ -297,6 +297,80 @@ import Foundation
 }
 
 @MainActor
+@Test func applicationTargetsGroupWindowsByOwningApplicationName() {
+    var snapshot = AppShellSnapshot.ready
+    snapshot.availableTargets.append(contentsOf: [
+        SourceTargetOption(
+            id: "window-99",
+            mode: .window,
+            source: .window(WindowID(rawValue: 99)),
+            title: "Safari - Release Notes",
+            subtitle: "Window recording target"
+        ),
+        SourceTargetOption(
+            id: "window-100",
+            mode: .window,
+            source: .window(WindowID(rawValue: 100)),
+            title: "Xcode - OpenRec",
+            subtitle: "Window recording target"
+        )
+    ])
+    let viewModel = AppShellViewModel(adapter: MockAppCoreAdapter(initialSnapshot: snapshot))
+
+    let applications = viewModel.applicationTargets
+
+    #expect(applications.map(\.title) == ["Safari", "Xcode"])
+    #expect(applications.first { $0.id == "Safari" }?.windows.map(\.id) == ["window-42", "window-99"])
+}
+
+@MainActor
+@Test func applicationRecordingWorkflowSelectsApplicationBeforeSpecificWindow() {
+    var snapshot = AppShellSnapshot.ready
+    snapshot.availableTargets.append(SourceTargetOption(
+        id: "window-99",
+        mode: .window,
+        source: .window(WindowID(rawValue: 99)),
+        title: "Xcode - OpenRec",
+        subtitle: "Window recording target"
+    ))
+    let adapter = MockAppCoreAdapter(initialSnapshot: snapshot)
+    let viewModel = AppShellViewModel(adapter: adapter)
+
+    let entered = viewModel.requestApplicationRecordingWorkflow()
+    viewModel.selectApplicationForRecording(applicationName: "Xcode")
+    viewModel.selectWindowForRecording(targetID: "window-99")
+
+    #expect(entered == true)
+    #expect(adapter.selectModes == [.window])
+    #expect(adapter.selectTargetIDs == ["window-99"])
+    #expect(viewModel.windowRecordingWorkflow == .configuringWindow(previousMode: .display, previousTargetID: "display-1", selectedTargetID: "window-99"))
+    #expect(viewModel.snapshot.selectedTarget.id == "window-99")
+}
+
+@MainActor
+@Test func applicationRecordingWorkflowRejectsWindowFromDifferentApplication() {
+    var snapshot = AppShellSnapshot.ready
+    snapshot.availableTargets.append(SourceTargetOption(
+        id: "window-99",
+        mode: .window,
+        source: .window(WindowID(rawValue: 99)),
+        title: "Xcode - OpenRec",
+        subtitle: "Window recording target"
+    ))
+    let adapter = MockAppCoreAdapter(initialSnapshot: snapshot)
+    let viewModel = AppShellViewModel(adapter: adapter)
+
+    _ = viewModel.requestApplicationRecordingWorkflow()
+    viewModel.selectApplicationForRecording(applicationName: "Xcode")
+    viewModel.selectWindowForRecording(targetID: "window-42")
+
+    #expect(adapter.selectModes.isEmpty)
+    #expect(adapter.selectTargetIDs.isEmpty)
+    #expect(viewModel.windowRecordingWorkflow == .selectingApplicationWindow(previousMode: .display, previousTargetID: "display-1", applicationName: "Xcode"))
+    #expect(viewModel.snapshot.selectedTarget.id == "display-1")
+}
+
+@MainActor
 @Test func viewModelExposesSaveFlowActionsOnlyWhileAwaitingSave() {
     let adapter = MockAppCoreAdapter(initialSnapshot: .awaitingSave)
     let viewModel = AppShellViewModel(adapter: adapter)
@@ -438,11 +512,11 @@ import Foundation
     let snapshot = await adapter.refresh()
 
     #expect(snapshot.status == .ready)
-    #expect(snapshot.mode == .window)
-    #expect(snapshot.selectedTarget.source == .window(WindowID(rawValue: 99)))
-    #expect(snapshot.selectedTarget.title == "TextEdit - Notes")
-    #expect(snapshot.selectedTarget.subtitle == "1280 x 720, original resolution")
-    #expect(snapshot.selectedTarget.screenFrame == CGRect(x: 80, y: 120, width: 640, height: 360))
+    #expect(snapshot.mode == .display)
+    #expect(snapshot.selectedTarget.source == .display(DisplayID(rawValue: 10)))
+    #expect(snapshot.selectedTarget.title == "Main Display")
+    #expect(snapshot.selectedTarget.subtitle == "3024 x 1964, original resolution")
+    #expect(snapshot.selectedTarget.screenFrame == nil)
     #expect(snapshot.availableTargets.map(\.source) == [
         .display(DisplayID(rawValue: 10)),
         .window(WindowID(rawValue: 99))
@@ -668,12 +742,14 @@ import Foundation
 }
 
 @MainActor
-@Test func productionAdapterSaveRecordingCancelKeepsAwaitingSaveAndPendingURL() async {
+@Test func productionAdapterSaveRecordingCancelDiscardsTemporaryRecordingAndReturnsReady() async {
     let pendingURL = URL(filePath: "/tmp/openrec-finalized.mov")
+    let finalizer = NoOpTemporaryRecordingFinalizer()
     let savePanel = StubRecordingSavePanel(destinationURL: nil)
     let fileMover = SpyRecordingFileMover()
     let adapter = awaitingSaveAdapter(
         pendingURL: pendingURL,
+        finalizer: finalizer,
         savePanel: savePanel,
         fileMover: fileMover
     )
@@ -683,9 +759,10 @@ import Foundation
 
     #expect(savePanel.defaultFileNames == ["openrec-finalized.mov"])
     #expect(fileMover.moves.isEmpty)
-    #expect(snapshot.status == .awaitingSave)
-    #expect(snapshot.pendingSaveURL == pendingURL)
-    #expect(snapshot.errorMessage == "Choose a save location or discard the recording.")
+    #expect(finalizer.discardedURLs == [pendingURL])
+    #expect(snapshot.status == .ready)
+    #expect(snapshot.pendingSaveURL == nil)
+    #expect(snapshot.errorMessage == nil)
 }
 
 @MainActor
@@ -1094,7 +1171,7 @@ private func awaitingSaveAdapter(
 }
 
 @MainActor
-@Test func productionAdapterPersistsMenuSelectionsThroughSettingsStore() async throws {
+@Test func productionAdapterDoesNotPersistWindowSelectionAsDefaultMode() async throws {
     let settingsDirectory = temporarySettingsDirectory()
     let settingsStore = SettingsStore(settingsDirectory: settingsDirectory)
     let adapter = OpenRecAppCoreAdapter(
@@ -1133,7 +1210,7 @@ private func awaitingSaveAdapter(
     _ = adapter.selectMicrophone(id: "mic-2")
 
     let settings = try settingsStore.load().recording
-    #expect(settings.defaultMode == .window)
+    #expect(settings.defaultMode == .display)
     #expect(settings.microphoneDeviceID == "mic-2")
 }
 
@@ -1165,7 +1242,7 @@ private func awaitingSaveAdapter(
 }
 
 @MainActor
-@Test func viewModelPersistsCursorAndDefaultModePreferenceChanges() async throws {
+@Test func viewModelAlwaysKeepsDisplayAsDefaultRecordingSource() async throws {
     let settingsDirectory = temporarySettingsDirectory()
     let settingsStore = SettingsStore(settingsDirectory: settingsDirectory)
     let adapter = editablePreferencesAdapter(settingsStore: settingsStore)
@@ -1179,11 +1256,11 @@ private func awaitingSaveAdapter(
     viewModel.updateSettings(settings)
 
     let persistedSettings = try settingsStore.load().recording
-    #expect(persistedSettings.defaultMode == .window)
+    #expect(persistedSettings.defaultMode == .display)
     #expect(persistedSettings.includeCursor == false)
-    #expect(viewModel.snapshot.mode == .window)
-    #expect(viewModel.snapshot.selectedTarget.source == .window(WindowID(rawValue: 7)))
-    #expect(viewModel.snapshot.settings.defaultMode == .window)
+    #expect(viewModel.snapshot.mode == .display)
+    #expect(viewModel.snapshot.selectedTarget.source == .display(DisplayID(rawValue: 1)))
+    #expect(viewModel.snapshot.settings.defaultMode == .display)
     #expect(viewModel.snapshot.settings.includeCursor == false)
 }
 
