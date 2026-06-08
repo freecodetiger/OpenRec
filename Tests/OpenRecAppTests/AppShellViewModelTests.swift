@@ -12,6 +12,61 @@ import Foundation
     #expect(scenarios.map(\.status).contains(.error))
 }
 
+@Test func menuPresentationForReadyPrioritizesFullScreenRecording() {
+    let presentation = MenuBarPresentationModel.make(
+        snapshot: .ready,
+        isRecording: false,
+        canStartRecording: true
+    )
+
+    #expect(presentation.primaryActionTitle == "Start Full Screen Recording")
+    #expect(presentation.showsSourceActions == true)
+    #expect(presentation.showsMicrophone == true)
+    #expect(presentation.showsSettingsSummary == true)
+    #expect(presentation.showsPreferences == true)
+}
+
+@Test func menuPresentationForRecordingHidesConfigurationAndOnlyAllowsStop() {
+    let presentation = MenuBarPresentationModel.make(
+        snapshot: .recording,
+        isRecording: true,
+        canStartRecording: false
+    )
+
+    #expect(presentation.primaryActionTitle == "Stop Recording")
+    #expect(presentation.showsSourceActions == false)
+    #expect(presentation.showsMicrophone == false)
+    #expect(presentation.showsSettingsSummary == false)
+    #expect(presentation.showsPreferences == false)
+    #expect(presentation.isPrimaryActionEnabled == true)
+}
+
+@Test func menuPresentationForPermissionRequiredFocusesPermissionActions() {
+    let presentation = MenuBarPresentationModel.make(
+        snapshot: .permissionRequired,
+        isRecording: false,
+        canStartRecording: false
+    )
+
+    #expect(presentation.showsPermissionActions == true)
+    #expect(presentation.showsSourceActions == false)
+    #expect(presentation.showsMicrophone == false)
+    #expect(presentation.isPrimaryActionEnabled == false)
+}
+
+@Test func menuPresentationForAwaitingSaveUsesSaveRecoveryActions() {
+    let presentation = MenuBarPresentationModel.make(
+        snapshot: .awaitingSave,
+        isRecording: false,
+        canStartRecording: false
+    )
+
+    #expect(presentation.primaryActionTitle == "Save Again")
+    #expect(presentation.showsSaveActions == true)
+    #expect(presentation.showsSourceActions == false)
+    #expect(presentation.showsPreferences == false)
+}
+
 @MainActor
 @Test func primaryActionReflectsRecordingStatus() {
     let adapter = MockAppCoreAdapter(initialSnapshot: .recording)
