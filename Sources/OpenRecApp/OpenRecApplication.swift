@@ -40,6 +40,7 @@ struct OpenRecApplication: App {
                 snapshot: viewModel.snapshot,
                 onSettingsChange: viewModel.updateSettings,
                 onOpenPermissionSettings: viewModel.openPermissionSettings,
+                onRequestPermission: viewModel.requestPermission,
                 onRefreshPermissions: viewModel.refreshPermissions
             )
         }
@@ -49,6 +50,7 @@ struct OpenRecApplication: App {
             OnboardingView(
                 snapshot: viewModel.snapshot,
                 onOpenPermissionSettings: viewModel.openPermissionSettings,
+                onRequestPermission: viewModel.requestPermission,
                 onRefreshPermissions: viewModel.refreshPermissions
             )
         }

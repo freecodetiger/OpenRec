@@ -15,6 +15,7 @@ protocol AppShellAdapter: AnyObject {
     func selectMicrophone(id: String) -> AppShellSnapshot
     func updateSettings(_ settings: RecordingSettings) -> AppShellSnapshot
     func openPermissionSettings(for kind: PermissionKind) -> AppShellSnapshot
+    func requestPermission(for kind: PermissionKind) async -> AppShellSnapshot
     func refreshPermissions() -> AppShellSnapshot
     func saveRecording() -> AppShellSnapshot
     func retrySave() -> AppShellSnapshot
@@ -145,6 +146,12 @@ final class AppShellViewModel: ObservableObject {
 
     func openPermissionSettings(for kind: PermissionKind) {
         snapshot = adapter.openPermissionSettings(for: kind)
+    }
+
+    func requestPermission(for kind: PermissionKind) {
+        Task {
+            snapshot = await adapter.requestPermission(for: kind)
+        }
     }
 
     func refreshPermissions() {

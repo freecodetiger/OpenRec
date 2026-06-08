@@ -145,6 +145,24 @@ import Foundation
 }
 
 @MainActor
+@Test func viewModelRequestsPermissionThroughAdapter() async throws {
+    var grantedSnapshot = AppShellSnapshot.permissionRequired
+    grantedSnapshot.status = .ready
+    grantedSnapshot.permissionStatuses = Dictionary(uniqueKeysWithValues: PermissionKind.allCases.map { ($0, .granted) })
+    grantedSnapshot.requiredPermissions = []
+    let adapter = MockAppCoreAdapter(initialSnapshot: .permissionRequired)
+    adapter.permissionRefreshSnapshot = grantedSnapshot
+    let viewModel = AppShellViewModel(adapter: adapter)
+
+    viewModel.requestPermission(for: .microphone)
+    try await Task.sleep(for: .milliseconds(50))
+
+    #expect(adapter.requestedPermissions == [.microphone])
+    #expect(viewModel.snapshot.status == .ready)
+    #expect(viewModel.snapshot.requiredPermissions.isEmpty)
+}
+
+@MainActor
 @Test func viewModelExposesSaveFlowActionsOnlyWhileAwaitingSave() {
     let adapter = MockAppCoreAdapter(initialSnapshot: .awaitingSave)
     let viewModel = AppShellViewModel(adapter: adapter)
@@ -759,6 +777,52 @@ private func awaitingSaveAdapter(
     #expect(try settingsStore.load().recording == .defaults)
 }
 
+@MainActor
+@Test func productionAdapterRequestPermissionRefreshesSnapshotAndOpensSettings() async throws {
+    let provider = MutablePermissionStatusProvider(statuses: [
+        .screenRecording: .granted,
+        .microphone: .denied,
+        .accessibility: .granted,
+        .inputMonitoring: .granted
+    ])
+    let requester = SpyPermissionRequester { kind in
+        if kind == .microphone {
+            provider.statuses[.microphone] = .granted
+        }
+    }
+    let opener = SpySystemSettingsOpener()
+    let adapter = OpenRecAppCoreAdapter(
+        settingsStore: SettingsStore(settingsDirectory: temporarySettingsDirectory()),
+        captureSourceProvider: InMemoryCaptureSourceProvider(
+            displays: [
+                DisplaySourceMetadata(
+                    id: DisplayID(rawValue: 1),
+                    name: "Main Display",
+                    pixelSize: CGSize(width: 1920, height: 1080),
+                    isAvailable: true
+                )
+            ],
+            windows: []
+        ),
+        audioDeviceProvider: InMemoryAudioDeviceProvider(devices: [
+            MicrophoneDevice(id: "mic-1", name: "Built-in Microphone", isDefault: true)
+        ]),
+        permissionChecker: PermissionChecker(provider: provider),
+        hotkeyManager: HotkeyManager(registry: InMemoryHotkeyRegistry()),
+        systemSettingsOpener: opener,
+        permissionRequester: requester
+    )
+
+    _ = await adapter.refresh()
+    let snapshot = await adapter.requestPermission(for: .microphone)
+
+    #expect(requester.requestedPermissionKinds == [.microphone])
+    #expect(opener.openedPermissionKinds == [.microphone])
+    #expect(snapshot.status == .ready)
+    #expect(snapshot.requiredPermissions.isEmpty)
+    #expect(snapshot.permissionStatuses[.microphone] == .granted)
+}
+
 @Test func systemSettingsPermissionURLsTargetExpectedPrivacyPanes() {
     #expect(SystemSettingsPermissionPane.url(for: .screenRecording).absoluteString.contains("Privacy_ScreenCapture"))
     #expect(SystemSettingsPermissionPane.url(for: .microphone).absoluteString.contains("Privacy_Microphone"))
@@ -1103,6 +1167,21 @@ private final class SpyRecordingFileMover: RecordingFileMoving {
 }
 
 private struct TestSaveMoveError: Error {}
+
+@MainActor
+private final class SpyPermissionRequester: PermissionRequesting {
+    private(set) var requestedPermissionKinds: [PermissionKind] = []
+    private let onRequest: (PermissionKind) -> Void
+
+    init(onRequest: @escaping (PermissionKind) -> Void = { _ in }) {
+        self.onRequest = onRequest
+    }
+
+    func requestPermission(for kind: PermissionKind) async {
+        requestedPermissionKinds.append(kind)
+        onRequest(kind)
+    }
+}
 
 @MainActor
 private final class SpySystemSettingsOpener: SystemSettingsOpening {

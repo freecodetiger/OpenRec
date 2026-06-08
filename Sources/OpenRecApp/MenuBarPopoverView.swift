@@ -94,7 +94,7 @@ struct MenuBarPopoverView: View {
         if viewModel.snapshot.status == .permissionRequired {
             HStack {
                 Button {
-                    viewModel.openPermissionSettings(
+                    viewModel.requestPermission(
                         for: viewModel.snapshot.requiredPermissions.first ?? .screenRecording
                     )
                 } label: {

@@ -5,6 +5,7 @@ struct PreferencesView: View {
     var snapshot: AppShellSnapshot
     var onSettingsChange: (RecordingSettings) -> Void = { _ in }
     var onOpenPermissionSettings: (PermissionKind) -> Void = { _ in }
+    var onRequestPermission: (PermissionKind) -> Void = { _ in }
     var onRefreshPermissions: () -> Void = {}
     @State private var draftSettings: RecordingSettings
 
@@ -12,11 +13,13 @@ struct PreferencesView: View {
         snapshot: AppShellSnapshot,
         onSettingsChange: @escaping (RecordingSettings) -> Void = { _ in },
         onOpenPermissionSettings: @escaping (PermissionKind) -> Void = { _ in },
+        onRequestPermission: @escaping (PermissionKind) -> Void = { _ in },
         onRefreshPermissions: @escaping () -> Void = {}
     ) {
         self.snapshot = snapshot
         self.onSettingsChange = onSettingsChange
         self.onOpenPermissionSettings = onOpenPermissionSettings
+        self.onRequestPermission = onRequestPermission
         self.onRefreshPermissions = onRefreshPermissions
         _draftSettings = State(initialValue: snapshot.settings)
     }
@@ -90,7 +93,8 @@ struct PreferencesView: View {
             Form {
                 PermissionPlaceholderView(
                     snapshot: snapshot,
-                    onOpenPermissionSettings: onOpenPermissionSettings
+                    onOpenPermissionSettings: onOpenPermissionSettings,
+                    onRequestPermission: onRequestPermission
                 )
                 Button("Re-check Permissions", action: onRefreshPermissions)
             }

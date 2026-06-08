@@ -4,6 +4,7 @@ import OpenRecCore
 struct OnboardingView: View {
     var snapshot: AppShellSnapshot
     var onOpenPermissionSettings: (PermissionKind) -> Void = { _ in }
+    var onRequestPermission: (PermissionKind) -> Void = { _ in }
     var onRefreshPermissions: () -> Void = {}
 
     var body: some View {
@@ -16,14 +17,15 @@ struct OnboardingView: View {
 
             PermissionPlaceholderView(
                 snapshot: snapshot,
-                onOpenPermissionSettings: onOpenPermissionSettings
+                onOpenPermissionSettings: onOpenPermissionSettings,
+                onRequestPermission: onRequestPermission
             )
 
             Spacer()
 
             HStack {
                 Button("Open System Settings") {
-                    onOpenPermissionSettings(snapshot.requiredPermissions.first ?? .screenRecording)
+                    onRequestPermission(snapshot.requiredPermissions.first ?? .screenRecording)
                 }
                 Button("Re-check Permissions", action: onRefreshPermissions)
             }
@@ -35,6 +37,7 @@ struct OnboardingView: View {
 struct PermissionPlaceholderView: View {
     var snapshot: AppShellSnapshot
     var onOpenPermissionSettings: (PermissionKind) -> Void = { _ in }
+    var onRequestPermission: (PermissionKind) -> Void = { _ in }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -50,7 +53,7 @@ struct PermissionPlaceholderView: View {
                     }
                     Spacer()
                     Button("Open Settings") {
-                        onOpenPermissionSettings(item.kind)
+                        onRequestPermission(item.kind)
                     }
                 }
             }

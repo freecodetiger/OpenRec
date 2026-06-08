@@ -26,6 +26,7 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
     private let savePanel: any RecordingSavePanelPresenting
     private let fileMover: any RecordingFileMoving
     private let systemSettingsOpener: any SystemSettingsOpening
+    private let permissionRequester: any PermissionRequesting
 
     private(set) var snapshot: AppShellSnapshot
     var onHotkeyTriggered: (@MainActor @Sendable () -> Void)?
@@ -44,7 +45,8 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
         recordingCoordinator: RecordingCoordinator? = nil,
         savePanel: any RecordingSavePanelPresenting = NSSavePanelRecordingSavePanel(),
         fileMover: any RecordingFileMoving = FileManagerRecordingFileMover(),
-        systemSettingsOpener: any SystemSettingsOpening = NSWorkspaceSystemSettingsOpener()
+        systemSettingsOpener: any SystemSettingsOpening = NSWorkspaceSystemSettingsOpener(),
+        permissionRequester: any PermissionRequesting = SystemPermissionRequester()
     ) {
         self.settingsStore = settingsStore
         self.captureSourceProvider = captureSourceProvider
@@ -59,6 +61,7 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
         self.savePanel = savePanel
         self.fileMover = fileMover
         self.systemSettingsOpener = systemSettingsOpener
+        self.permissionRequester = permissionRequester
         self.hotkeyRegistrationErrorMessage = nil
         self.recordingCoordinator = recordingCoordinator ?? RecordingCoordinator(
             permissionValidator: DefaultRecordingPermissionValidator(permissionChecker: permissionChecker),
@@ -199,6 +202,12 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
     func openPermissionSettings(for kind: PermissionKind) -> AppShellSnapshot {
         systemSettingsOpener.openPermissionSettings(for: kind)
         return snapshot
+    }
+
+    func requestPermission(for kind: PermissionKind) async -> AppShellSnapshot {
+        await permissionRequester.requestPermission(for: kind)
+        systemSettingsOpener.openPermissionSettings(for: kind)
+        return refreshPermissions()
     }
 
     func refreshPermissions() -> AppShellSnapshot {
