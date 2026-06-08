@@ -4,13 +4,12 @@ import SwiftUI
 @MainActor
 final class AppKitStatusItemController: NSObject, ObservableObject {
     private let viewModel: AppShellViewModel
-    private let statusItem: NSStatusItem
+    private var statusItem: NSStatusItem?
     private let popover: NSPopover
     var onRequestWindowRecordingWorkflow: (() -> Void)?
 
     init(viewModel: AppShellViewModel) {
         self.viewModel = viewModel
-        self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         self.popover = NSPopover()
         super.init()
 
@@ -30,16 +29,23 @@ final class AppKitStatusItemController: NSObject, ObservableObject {
                     await viewModel.refresh()
                 }
         )
+    }
+
+    func installIfNeeded() {
+        guard statusItem == nil else { return }
+
+        let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
         if let button = statusItem.button {
             button.image = NSImage(systemSymbolName: viewModel.menuBarSymbolName, accessibilityDescription: "OpenRec")
             button.action = #selector(togglePopover(_:))
             button.target = self
         }
+        self.statusItem = statusItem
     }
 
     func refreshSymbol() {
-        statusItem.button?.image = NSImage(
+        statusItem?.button?.image = NSImage(
             systemSymbolName: viewModel.menuBarSymbolName,
             accessibilityDescription: "OpenRec"
         )

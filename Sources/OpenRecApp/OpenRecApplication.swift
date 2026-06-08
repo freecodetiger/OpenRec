@@ -27,6 +27,9 @@ struct OpenRecApplication: App {
         statusController.onRequestWindowRecordingWorkflow = { [weak workflowCoordinator] in
             workflowCoordinator?.begin()
         }
+        DispatchQueue.main.async {
+            statusController.installIfNeeded()
+        }
         _viewModel = StateObject(wrappedValue: model)
         _statusItemController = StateObject(wrappedValue: statusController)
         _windowRecordingWorkflowCoordinator = StateObject(wrappedValue: workflowCoordinator)
