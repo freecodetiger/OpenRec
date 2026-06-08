@@ -104,7 +104,13 @@ struct PermissionDisplayItem {
     var kind: PermissionKind
     var title: String
     var reason: String
+    var status: PermissionStatus
+    var isRequired: Bool
     var isGranted: Bool
+
+    var statusText: String {
+        "\(title): \(status.label)"
+    }
 
     static func items(for snapshot: AppShellSnapshot) -> [PermissionDisplayItem] {
         PermissionKind.allCases.map { kind in
@@ -113,8 +119,25 @@ struct PermissionDisplayItem {
                 kind: kind,
                 title: kind.title,
                 reason: kind.reason,
+                status: status,
+                isRequired: snapshot.requiredPermissions.contains(kind),
                 isGranted: status == .granted
             )
+        }
+    }
+}
+
+private extension PermissionStatus {
+    var label: String {
+        switch self {
+        case .granted:
+            "Granted"
+        case .denied:
+            "Denied"
+        case .notDetermined:
+            "Not Determined"
+        case .unknown:
+            "Unknown"
         }
     }
 }

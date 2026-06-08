@@ -15,6 +15,7 @@ struct MenuBarPopoverView: View {
             modePicker
             targetPicker
             microphonePicker
+            permissionDetails
             permissionActions
 
             Divider()
@@ -84,6 +85,21 @@ struct MenuBarPopoverView: View {
             )) {
                 ForEach(viewModel.snapshot.microphones) { microphone in
                     Text(microphone.title).tag(microphone.id)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var permissionDetails: some View {
+        if viewModel.snapshot.status == .permissionRequired {
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(PermissionDisplayItem.items(for: viewModel.snapshot), id: \.kind) { item in
+                    if item.isRequired {
+                        Label(item.statusText, systemImage: "exclamationmark.triangle")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
                 }
             }
         }
