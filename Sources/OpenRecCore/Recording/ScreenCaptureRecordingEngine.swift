@@ -48,6 +48,8 @@ public final class ScreenCaptureRecordingEngine: RecordingEngine, @unchecked Sen
         )
 
         var writer: (any RecordingOutputWriter)?
+        var captureSession: (any RecordingCaptureSession)?
+        var microphoneCaptureSession: (any MicrophoneCaptureSession)?
 
         do {
             try fileManager.createDirectory(
@@ -61,15 +63,17 @@ public final class ScreenCaptureRecordingEngine: RecordingEngine, @unchecked Sen
             writer = createdWriter
             try createdWriter.start()
 
-            let captureSession = try captureSessionFactory.startCapture(
+            let startedCaptureSession = try captureSessionFactory.startCapture(
                 configuration: configuration,
                 writer: createdWriter
             )
-            let microphoneCaptureSession = try startMicrophoneCaptureIfNeeded(
+            captureSession = startedCaptureSession
+            let startedMicrophoneCaptureSession = try startMicrophoneCaptureIfNeeded(
                 configuration: configuration,
-                captureSession: captureSession,
+                captureSession: startedCaptureSession,
                 writer: createdWriter
             )
+            microphoneCaptureSession = startedMicrophoneCaptureSession
 
             let session = RecordingSession(
                 id: sessionID,
@@ -80,13 +84,16 @@ public final class ScreenCaptureRecordingEngine: RecordingEngine, @unchecked Sen
             lock.withLock {
                 activeRecordings[sessionID] = ActiveRecording(
                     writer: createdWriter,
-                    captureSession: captureSession,
-                    microphoneCaptureSession: microphoneCaptureSession
+                    captureSession: startedCaptureSession,
+                    microphoneCaptureSession: startedMicrophoneCaptureSession
                 )
             }
 
             return session
         } catch {
+            try? captureSession?.stop()
+            try? microphoneCaptureSession?.stop()
+
             if writer != nil {
                 try? fileManager.removeItem(at: outputURL)
             }

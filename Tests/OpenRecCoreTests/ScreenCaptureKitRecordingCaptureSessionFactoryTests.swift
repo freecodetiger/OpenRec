@@ -55,6 +55,24 @@ import Testing
     #expect(streamConfiguration.capturesAudio == false)
     #expect(streamConfiguration.captureMicrophone == true)
     #expect(streamConfiguration.microphoneCapturePolicy == .enabled)
+    #expect(streamConfiguration.microphoneCaptureDeviceID == "BuiltInMic")
+}
+
+@Test func screenCaptureKitStreamConfigurationMapsSelectedMicrophoneDeviceToSCConfiguration() throws {
+    let streamConfiguration = try ScreenCaptureKitStreamConfiguration(
+        configuration: resolvedConfiguration(
+            source: .display(DisplayID(rawValue: 42)),
+            microphoneDeviceID: "ExternalMic"
+        ),
+        supportsMicrophoneOutput: true
+    )
+
+    if #available(macOS 15.0, *) {
+        let scConfiguration = streamConfiguration.makeSCStreamConfiguration()
+
+        #expect(scConfiguration.captureMicrophone == true)
+        #expect(scConfiguration.microphoneCaptureDeviceID == "ExternalMic")
+    }
 }
 
 @Test func screenCaptureKitStreamConfigurationKeepsMicrophoneDisabledWhenUnavailable() throws {
@@ -69,6 +87,7 @@ import Testing
     #expect(streamConfiguration.capturesAudio == false)
     #expect(streamConfiguration.captureMicrophone == false)
     #expect(streamConfiguration.microphoneCapturePolicy == .unavailableOnCurrentOS)
+    #expect(streamConfiguration.microphoneCaptureDeviceID == nil)
 }
 
 @Test func screenCaptureKitStreamConfigurationDoesNotRequestMicrophoneWithoutConfiguredDevice() throws {
@@ -114,6 +133,7 @@ import Testing
     #expect(streamBuilder.builtStreams[0].configuration.capturesAudio == false)
     #expect(streamBuilder.builtStreams[0].configuration.captureMicrophone == true)
     #expect(streamBuilder.builtStreams[0].configuration.microphoneCapturePolicy == .enabled)
+    #expect(streamBuilder.builtStreams[0].configuration.microphoneCaptureDeviceID == "BuiltInMic")
     #expect(streamBuilder.builtStreams[0].stream.addedOutputTypes == [.screen, .microphone])
 }
 

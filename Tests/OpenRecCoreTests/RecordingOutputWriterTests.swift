@@ -142,6 +142,31 @@ import Testing
     #expect(duration < CMTime(seconds: 1, preferredTimescale: 600))
 }
 
+@Test func avAssetRecordingOutputWriterIgnoresAudioBeforeFirstVideoFrameForSessionStart() async throws {
+    let directory = try temporaryDirectory()
+    let outputURL = directory.appending(path: "audio-before-video.mov")
+    let settings = try smallWriterSettings()
+    let writer = try AVAssetRecordingOutputWriter(settings: settings, outputURL: outputURL)
+    let firstVideoPTS = CMTime(seconds: 10, preferredTimescale: 600)
+
+    try writer.start()
+    try writer.appendAudioSampleBuffer(try audioSampleBuffer(presentationTime: .zero))
+    try writer.appendVideoSampleBuffer(
+        try videoSampleBuffer(size: CGSize(width: 64, height: 64), presentationTime: firstVideoPTS)
+    )
+    try writer.appendVideoSampleBuffer(
+        try videoSampleBuffer(
+            size: CGSize(width: 64, height: 64),
+            presentationTime: firstVideoPTS + CMTime(value: 1, timescale: 30)
+        )
+    )
+    let finalizedURL = try writer.finish()
+
+    let asset = AVURLAsset(url: finalizedURL)
+    let duration = try await asset.load(.duration)
+    #expect(duration < CMTime(seconds: 1, preferredTimescale: 600))
+}
+
 @Test func avAssetRecordingOutputWriterRejectsFinishBeforeFirstVideoFrame() throws {
     let directory = try temporaryDirectory()
     let outputURL = directory.appending(path: "no-video-frame.mov")
@@ -164,6 +189,107 @@ import Testing
     #expect(throws: OpenRecError.writerFailed("No video frames were captured.")) {
         _ = try writer.finish()
     }
+}
+
+@Test func avAssetRecordingOutputWriterRejectsFinishAfterOnlyAudioFrames() throws {
+    let directory = try temporaryDirectory()
+    let outputURL = directory.appending(path: "only-audio.mov")
+    let settings = try smallWriterSettings()
+    let writer = try AVAssetRecordingOutputWriter(settings: settings, outputURL: outputURL)
+
+    try writer.start()
+    try writer.appendAudioSampleBuffer(try audioSampleBuffer(presentationTime: .zero))
+
+    #expect(throws: OpenRecError.writerFailed("No video frames were captured.")) {
+        _ = try writer.finish()
+    }
+}
+
+@Test func avAssetRecordingOutputWriterSerializesConcurrentVideoAndAudioAppends() throws {
+    let directory = try temporaryDirectory()
+    let outputURL = directory.appending(path: "concurrent-appends.mov")
+    let settings = try smallWriterSettings()
+    let writer = try AVAssetRecordingOutputWriter(settings: settings, outputURL: outputURL)
+    let firstPTS = CMTime(seconds: 2, preferredTimescale: 600)
+    let videoSamples = try (0..<3).map { frame in
+        UncheckedSampleBuffer(
+            try videoSampleBuffer(
+                size: CGSize(width: 64, height: 64),
+                presentationTime: firstPTS + CMTime(value: CMTimeValue(frame), timescale: 30)
+            )
+        )
+    }
+    let audioSamples = try (0..<3).map { packet in
+        UncheckedSampleBuffer(
+            try audioSampleBuffer(
+                presentationTime: firstPTS + CMTime(value: CMTimeValue(packet * 480), timescale: 48_000)
+            )
+        )
+    }
+    let startGate = DispatchSemaphore(value: 0)
+    let group = DispatchGroup()
+    let errorRecorder = ErrorRecorder()
+
+    try writer.start()
+
+    group.enter()
+    DispatchQueue(label: "openrec.writer-test.video").async {
+        startGate.wait()
+        for sample in videoSamples {
+            do {
+                try writer.appendVideoSampleBuffer(sample.value)
+            } catch {
+                errorRecorder.record(error)
+            }
+        }
+        group.leave()
+    }
+
+    group.enter()
+    DispatchQueue(label: "openrec.writer-test.audio").async {
+        startGate.wait()
+        for sample in audioSamples {
+            do {
+                try writer.appendAudioSampleBuffer(sample.value)
+            } catch {
+                errorRecorder.record(error)
+            }
+        }
+        group.leave()
+    }
+
+    startGate.signal()
+    startGate.signal()
+    group.wait()
+
+    #expect(errorRecorder.values.isEmpty)
+    let finalizedURL = try writer.finish()
+    #expect(FileManager.default.fileExists(atPath: finalizedURL.path(percentEncoded: false)))
+}
+
+@Test func avAssetRecordingOutputWriterWritesAudioAfterFirstVideoFrame() async throws {
+    let directory = try temporaryDirectory()
+    let outputURL = directory.appending(path: "video-then-audio.mov")
+    let settings = try smallWriterSettings()
+    let writer = try AVAssetRecordingOutputWriter(settings: settings, outputURL: outputURL)
+    let firstPTS = CMTime(seconds: 4, preferredTimescale: 600)
+
+    try writer.start()
+    try writer.appendVideoSampleBuffer(
+        try videoSampleBuffer(size: CGSize(width: 64, height: 64), presentationTime: firstPTS)
+    )
+    try writer.appendAudioSampleBuffer(try audioSampleBuffer(presentationTime: firstPTS))
+    try writer.appendVideoSampleBuffer(
+        try videoSampleBuffer(
+            size: CGSize(width: 64, height: 64),
+            presentationTime: firstPTS + CMTime(value: 1, timescale: 30)
+        )
+    )
+    let finalizedURL = try writer.finish()
+
+    let asset = AVURLAsset(url: finalizedURL)
+    let audioTracks = try await asset.loadTracks(withMediaType: .audio)
+    #expect(!audioTracks.isEmpty)
 }
 
 @Test func temporaryRecordingURLUsesContainerExtensionAndOpenRecPrefix() throws {
@@ -241,10 +367,11 @@ import Testing
 
 @Test func screenCaptureRecordingEngineCleansTemporaryFileWhenMicrophoneCaptureFails() throws {
     let directory = try temporaryDirectory()
+    let captureSession = StubRecordingCaptureSession()
     let engine = ScreenCaptureRecordingEngine(
         outputDirectory: directory,
         writerFactory: SuccessfulRecordingOutputWriterFactory(),
-        captureSessionFactory: SuccessfulRecordingCaptureSessionFactory(captureSession: StubRecordingCaptureSession()),
+        captureSessionFactory: SuccessfulRecordingCaptureSessionFactory(captureSession: captureSession),
         microphoneCaptureSessionFactory: FailingMicrophoneCaptureSessionFactory(
             error: .microphoneUnavailable("missing-mic")
         ),
@@ -268,6 +395,7 @@ import Testing
     }
 
     #expect(!FileManager.default.fileExists(atPath: expectedURL.path(percentEncoded: false)))
+    #expect(captureSession.didStop)
 }
 
 @Test func screenCaptureRecordingEngineRejectsStopForUnknownSession() {
@@ -310,6 +438,21 @@ private func temporaryDirectory() throws -> URL {
         .appending(path: UUID().uuidString)
     try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     return url
+}
+
+private func smallWriterSettings() throws -> RecordingOutputWriterSettings {
+    try RecordingOutputWriterSettings(
+        configuration: ResolvedRecordingConfiguration(
+            source: .display(DisplayID(rawValue: 1)),
+            pixelSize: CGSize(width: 64, height: 64),
+            outputFormat: .mov,
+            videoCodec: .h264,
+            bitrate: 500_000,
+            frameRate: 30,
+            includeCursor: true,
+            microphoneDeviceID: "TestMic"
+        )
+    )
 }
 
 private func videoSampleBuffer(size: CGSize, presentationTime: CMTime) throws -> CMSampleBuffer {
@@ -363,6 +506,115 @@ private func videoSampleBuffer(size: CGSize, presentationTime: CMTime) throws ->
     }
 
     return sampleBuffer
+}
+
+private func audioSampleBuffer(
+    presentationTime: CMTime,
+    sampleCount: CMItemCount = 480
+) throws -> CMSampleBuffer {
+    var streamDescription = AudioStreamBasicDescription(
+        mSampleRate: 48_000,
+        mFormatID: kAudioFormatLinearPCM,
+        mFormatFlags: kLinearPCMFormatFlagIsSignedInteger | kLinearPCMFormatFlagIsPacked,
+        mBytesPerPacket: 4,
+        mFramesPerPacket: 1,
+        mBytesPerFrame: 4,
+        mChannelsPerFrame: 2,
+        mBitsPerChannel: 16,
+        mReserved: 0
+    )
+    var formatDescription: CMAudioFormatDescription?
+    let formatStatus = CMAudioFormatDescriptionCreate(
+        allocator: kCFAllocatorDefault,
+        asbd: &streamDescription,
+        layoutSize: 0,
+        layout: nil,
+        magicCookieSize: 0,
+        magicCookie: nil,
+        extensions: nil,
+        formatDescriptionOut: &formatDescription
+    )
+    guard formatStatus == noErr, let formatDescription else {
+        throw OpenRecError.writerFailed("Could not create test audio format description.")
+    }
+
+    let byteCount = Int(sampleCount) * Int(streamDescription.mBytesPerFrame)
+    var blockBuffer: CMBlockBuffer?
+    let blockStatus = CMBlockBufferCreateWithMemoryBlock(
+        allocator: kCFAllocatorDefault,
+        memoryBlock: nil,
+        blockLength: byteCount,
+        blockAllocator: kCFAllocatorDefault,
+        customBlockSource: nil,
+        offsetToData: 0,
+        dataLength: byteCount,
+        flags: 0,
+        blockBufferOut: &blockBuffer
+    )
+    guard blockStatus == noErr, let blockBuffer else {
+        throw OpenRecError.writerFailed("Could not create test audio block buffer.")
+    }
+
+    let fillStatus = CMBlockBufferFillDataBytes(
+        with: 0,
+        blockBuffer: blockBuffer,
+        offsetIntoDestination: 0,
+        dataLength: byteCount
+    )
+    guard fillStatus == noErr else {
+        throw OpenRecError.writerFailed("Could not fill test audio block buffer.")
+    }
+
+    var timing = CMSampleTimingInfo(
+        duration: CMTime(value: 1, timescale: 48_000),
+        presentationTimeStamp: presentationTime,
+        decodeTimeStamp: .invalid
+    )
+    var sampleBuffer: CMSampleBuffer?
+    let sampleStatus = CMSampleBufferCreate(
+        allocator: kCFAllocatorDefault,
+        dataBuffer: blockBuffer,
+        dataReady: true,
+        makeDataReadyCallback: nil,
+        refcon: nil,
+        formatDescription: formatDescription,
+        sampleCount: sampleCount,
+        sampleTimingEntryCount: 1,
+        sampleTimingArray: &timing,
+        sampleSizeEntryCount: 0,
+        sampleSizeArray: nil,
+        sampleBufferOut: &sampleBuffer
+    )
+    guard sampleStatus == noErr, let sampleBuffer else {
+        throw OpenRecError.writerFailed("Could not create test audio sample buffer.")
+    }
+
+    return sampleBuffer
+}
+
+private struct UncheckedSampleBuffer: @unchecked Sendable {
+    var value: CMSampleBuffer
+
+    init(_ value: CMSampleBuffer) {
+        self.value = value
+    }
+}
+
+private final class ErrorRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var errors: [String] = []
+
+    var values: [String] {
+        lock.withLock {
+            errors
+        }
+    }
+
+    func record(_ error: Error) {
+        lock.withLock {
+            errors.append(String(describing: error))
+        }
+    }
 }
 
 private struct FailingRecordingOutputWriterFactory: RecordingOutputWriterFactory {

@@ -190,6 +190,7 @@ struct ScreenCaptureKitStreamConfiguration: Equatable, Sendable {
     var showsCursor: Bool
     var capturesAudio: Bool
     var captureMicrophone: Bool
+    var microphoneCaptureDeviceID: String?
     var microphoneCapturePolicy: ScreenCaptureKitMicrophoneCapturePolicy
     var pixelFormat: OSType
     var colorSpaceName: String
@@ -230,6 +231,11 @@ struct ScreenCaptureKitStreamConfiguration: Equatable, Sendable {
         self.showsCursor = configuration.includeCursor
         self.capturesAudio = false
         self.captureMicrophone = configuration.microphoneDeviceID != nil && supportsMicrophoneOutput
+        self.microphoneCaptureDeviceID = if captureMicrophone {
+            configuration.microphoneDeviceID
+        } else {
+            nil
+        }
         self.pixelFormat = kCVPixelFormatType_32BGRA
         self.colorSpaceName = CGColorSpace.sRGB as String
         self.microphoneCapturePolicy = if configuration.microphoneDeviceID == nil {
@@ -249,7 +255,7 @@ struct ScreenCaptureKitStreamConfiguration: Equatable, Sendable {
         }
     }
 
-    fileprivate func makeSCStreamConfiguration() -> SCStreamConfiguration {
+    func makeSCStreamConfiguration() -> SCStreamConfiguration {
         let configuration = SCStreamConfiguration()
         configuration.width = width
         configuration.height = height
@@ -260,6 +266,7 @@ struct ScreenCaptureKitStreamConfiguration: Equatable, Sendable {
         configuration.colorSpaceName = CGColorSpace.sRGB
         if #available(macOS 15.0, *) {
             configuration.captureMicrophone = captureMicrophone
+            configuration.microphoneCaptureDeviceID = microphoneCaptureDeviceID
         }
         return configuration
     }

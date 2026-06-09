@@ -136,6 +136,7 @@ public final class AVAssetRecordingOutputWriter: RecordingOutputWriter, @uncheck
     private let assetWriter: AVAssetWriter
     private let videoInput: AVAssetWriterInput
     private let audioInput: AVAssetWriterInput
+    private let writerQueue = DispatchQueue(label: "openrec.avasset-recording-output-writer")
     private var didStartSession = false
 
     public init(settings: RecordingOutputWriterSettings, outputURL: URL) throws {
@@ -170,57 +171,61 @@ public final class AVAssetRecordingOutputWriter: RecordingOutputWriter, @uncheck
     }
 
     public func start() throws {
-        guard assetWriter.startWriting() else {
-            throw OpenRecError.writerInitializationFailed(
-                assetWriter.error?.localizedDescription ?? "AVAssetWriter failed to start."
-            )
+        try writerQueue.sync {
+            guard assetWriter.startWriting() else {
+                throw OpenRecError.writerInitializationFailed(
+                    assetWriter.error?.localizedDescription ?? "AVAssetWriter failed to start."
+                )
+            }
         }
     }
 
     public func appendVideoSampleBuffer(_ sampleBuffer: CMSampleBuffer) throws {
-        try append(sampleBuffer, to: videoInput, label: "video")
+        try writerQueue.sync {
+            try appendVideo(sampleBuffer)
+        }
     }
 
     public func appendAudioSampleBuffer(_ sampleBuffer: CMSampleBuffer) throws {
-        try append(sampleBuffer, to: audioInput, label: "audio")
+        try writerQueue.sync {
+            try appendAudio(sampleBuffer)
+        }
     }
 
     public func finish() throws -> URL {
-        guard didStartSession else {
-            throw OpenRecError.writerFailed("No video frames were captured.")
-        }
+        try writerQueue.sync {
+            guard didStartSession else {
+                throw OpenRecError.writerFailed("No video frames were captured.")
+            }
 
-        if assetWriter.status == .writing {
-            videoInput.markAsFinished()
-            audioInput.markAsFinished()
-        }
+            if assetWriter.status == .writing {
+                videoInput.markAsFinished()
+                audioInput.markAsFinished()
+            }
 
-        let semaphore = DispatchSemaphore(value: 0)
-        assetWriter.finishWriting {
-            semaphore.signal()
-        }
-        semaphore.wait()
+            let semaphore = DispatchSemaphore(value: 0)
+            assetWriter.finishWriting {
+                semaphore.signal()
+            }
+            semaphore.wait()
 
-        guard assetWriter.status == .completed else {
-            throw OpenRecError.writerFailed(
-                assetWriter.error?.localizedDescription ?? "AVAssetWriter failed to finish."
-            )
-        }
+            guard assetWriter.status == .completed else {
+                throw OpenRecError.writerFailed(
+                    assetWriter.error?.localizedDescription ?? "AVAssetWriter failed to finish."
+                )
+            }
 
-        return outputURL
+            return outputURL
+        }
     }
 
-    private func append(
-        _ sampleBuffer: CMSampleBuffer,
-        to input: AVAssetWriterInput,
-        label: String
-    ) throws {
+    private func appendVideo(_ sampleBuffer: CMSampleBuffer) throws {
         guard assetWriter.status == .writing else {
             throw OpenRecError.writerFailed("AVAssetWriter is not writing.")
         }
 
-        guard input.isReadyForMoreMediaData else {
-            throw OpenRecError.writerFailed("AVAssetWriter \(label) input is not ready.")
+        guard videoInput.isReadyForMoreMediaData else {
+            throw OpenRecError.writerFailed("AVAssetWriter video input is not ready.")
         }
 
         if !didStartSession {
@@ -228,10 +233,31 @@ public final class AVAssetRecordingOutputWriter: RecordingOutputWriter, @uncheck
             didStartSession = true
         }
 
-        guard input.append(sampleBuffer) else {
+        guard videoInput.append(sampleBuffer) else {
             throw OpenRecError.writerFailed(
                 assetWriter.error?.localizedDescription ??
-                    "AVAssetWriter failed to append \(label) sample."
+                    "AVAssetWriter failed to append video sample."
+            )
+        }
+    }
+
+    private func appendAudio(_ sampleBuffer: CMSampleBuffer) throws {
+        guard assetWriter.status == .writing else {
+            throw OpenRecError.writerFailed("AVAssetWriter is not writing.")
+        }
+
+        guard didStartSession else {
+            return
+        }
+
+        guard audioInput.isReadyForMoreMediaData else {
+            throw OpenRecError.writerFailed("AVAssetWriter audio input is not ready.")
+        }
+
+        guard audioInput.append(sampleBuffer) else {
+            throw OpenRecError.writerFailed(
+                assetWriter.error?.localizedDescription ??
+                    "AVAssetWriter failed to append audio sample."
             )
         }
     }

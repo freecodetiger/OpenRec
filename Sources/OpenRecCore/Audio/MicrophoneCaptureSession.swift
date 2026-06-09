@@ -46,6 +46,7 @@ public struct AVFoundationMicrophoneCaptureSessionFactory: MicrophoneCaptureSess
             session.addInput(input)
 
             let output = AVCaptureAudioDataOutput()
+            output.audioSettings = AVFoundationMicrophoneCaptureOutputSettings().audioSettings
             let delegate = AVFoundationMicrophoneCaptureOutput(writer: writer)
             output.setSampleBufferDelegate(
                 delegate,
@@ -64,6 +65,16 @@ public struct AVFoundationMicrophoneCaptureSessionFactory: MicrophoneCaptureSess
         } catch {
             throw OpenRecError.microphoneUnavailable(deviceID)
         }
+    }
+}
+
+struct AVFoundationMicrophoneCaptureOutputSettings {
+    var audioSettings: [String: Any] {
+        // AVCaptureAudioDataOutput on macOS normalizes away explicit sample-rate and
+        // channel-count keys. The AVAssetWriter input owns the 48 kHz / stereo AAC encoding.
+        [
+            AVFormatIDKey: kAudioFormatLinearPCM
+        ]
     }
 }
 
