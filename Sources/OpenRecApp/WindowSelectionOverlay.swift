@@ -56,12 +56,12 @@ struct WindowSelectionOverlayModel: Equatable {
         index: Int,
         in viewSize: CGSize,
         overlayScreenFrame: CGRect
-    ) -> CGRect {
+    ) -> CGRect? {
         if let screenFrame = target.screenFrame, !screenFrame.isEmpty {
             return localFrame(for: screenFrame, in: viewSize, overlayScreenFrame: overlayScreenFrame)
         }
 
-        return fallbackFrame(for: index, count: targets.count, in: viewSize)
+        return nil
     }
 
     private func targetID(
@@ -69,14 +69,14 @@ struct WindowSelectionOverlayModel: Equatable {
         in viewSize: CGSize,
         overlayScreenFrame: CGRect
     ) -> String? {
-        for (index, target) in targets.enumerated().reversed() {
+        for (index, target) in targets.enumerated() {
             let frame = frame(
                 for: target,
                 index: index,
                 in: viewSize,
                 overlayScreenFrame: overlayScreenFrame
             )
-            if frame.contains(location) {
+            if let frame, frame.contains(location) {
                 return target.id
             }
         }
@@ -101,29 +101,6 @@ struct WindowSelectionOverlayModel: Equatable {
         )
     }
 
-    private func fallbackFrame(for index: Int, count: Int, in size: CGSize) -> CGRect {
-        let columns = max(1, min(3, count))
-        let rows = max(1, Int(ceil(Double(count) / Double(columns))))
-        let margin: CGFloat = 72
-        let spacing: CGFloat = 24
-        let availableWidth = max(320, size.width - margin * 2 - spacing * CGFloat(columns - 1))
-        let availableHeight = max(220, size.height - margin * 2 - spacing * CGFloat(rows - 1))
-        let width = min(420, availableWidth / CGFloat(columns))
-        let height = min(240, max(160, availableHeight / CGFloat(rows)))
-        let gridWidth = width * CGFloat(columns) + spacing * CGFloat(columns - 1)
-        let gridHeight = height * CGFloat(rows) + spacing * CGFloat(rows - 1)
-        let startX = (size.width - gridWidth) / 2
-        let startY = (size.height - gridHeight) / 2
-        let column = index % columns
-        let row = index / columns
-
-        return CGRect(
-            x: startX + CGFloat(column) * (width + spacing),
-            y: startY + CGFloat(row) * (height + spacing),
-            width: width,
-            height: height
-        )
-    }
 }
 
 struct WindowSelectionTargetPresentation: Equatable {
@@ -314,13 +291,14 @@ struct WindowSelectionOverlayView: View {
             GeometryReader { proxy in
                 ZStack {
                     ForEach(Array(model.targets.enumerated()), id: \.element.id) { index, target in
-                        let frame = model.frame(
+                        if let frame = model.frame(
                             for: target,
                             index: index,
                             in: proxy.size,
                             overlayScreenFrame: overlayScreenFrame
-                        )
-                        windowTarget(target, frame: frame)
+                        ) {
+                            windowTarget(target, frame: frame)
+                        }
                     }
 
                     trackingLayer(in: proxy)

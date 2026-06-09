@@ -114,6 +114,35 @@ import Testing
 }
 
 @MainActor
+@Test func windowSelectionOverlayPointerLocationPrefersFrontmostWindowAtPoint() {
+    let frontWindow = SourceTargetOption(
+        id: "window-front",
+        mode: .window,
+        source: .window(WindowID(rawValue: 1)),
+        title: "Front Window",
+        subtitle: "Window recording target",
+        screenFrame: CGRect(x: 220, y: 180, width: 420, height: 280)
+    )
+    let fullscreenWindowBehind = SourceTargetOption(
+        id: "window-fullscreen",
+        mode: .window,
+        source: .window(WindowID(rawValue: 2)),
+        title: "Fullscreen Window",
+        subtitle: "Window recording target",
+        screenFrame: CGRect(x: 0, y: 0, width: 1000, height: 700)
+    )
+    var overlay = WindowSelectionOverlayModel(targets: [frontWindow, fullscreenWindowBehind])
+
+    overlay.movePointer(
+        to: CGPoint(x: 300, y: 240),
+        in: CGSize(width: 1000, height: 700),
+        overlayScreenFrame: CGRect(x: 0, y: 0, width: 1000, height: 700)
+    )
+
+    #expect(overlay.highlightedTargetID == "window-front")
+}
+
+@MainActor
 @Test func windowSelectionOverlayPointerLocationClearsHighlightOutsideWindows() {
     let target = SourceTargetOption(
         id: "window-1",
@@ -232,7 +261,7 @@ import Testing
 }
 
 @MainActor
-@Test func windowSelectionOverlayFallsBackToGridWhenScreenFrameIsMissing() {
+@Test func windowSelectionOverlayDoesNotCreateFakeSelectionFrameWhenScreenFrameIsMissing() {
     let target = AppShellSnapshot.windowTarget
     let overlay = WindowSelectionOverlayModel(targets: [target])
 
@@ -243,9 +272,7 @@ import Testing
         overlayScreenFrame: CGRect(x: 0, y: 0, width: 1200, height: 800)
     )
 
-    #expect(frame.width > 0)
-    #expect(frame.height > 0)
-    #expect(frame != .zero)
+    #expect(frame == nil)
 }
 
 @MainActor
