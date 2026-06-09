@@ -73,6 +73,18 @@ import Testing
 }
 
 @MainActor
+@Test func windowSelectionOverlayPresentationUsesOutlineWithoutCardContent() {
+    let presentation = WindowSelectionTargetPresentation(isHighlighted: false)
+    let highlightedPresentation = WindowSelectionTargetPresentation(isHighlighted: true)
+
+    #expect(presentation.showsCardContent == false)
+    #expect(presentation.fillOpacity == 0)
+    #expect(presentation.strokeOpacity == 0)
+    #expect(highlightedPresentation.strokeOpacity > presentation.strokeOpacity)
+    #expect(highlightedPresentation.lineWidth > presentation.lineWidth)
+}
+
+@MainActor
 @Test func windowSelectionOverlayPointerLocationHighlightsWindowFrame() {
     let first = SourceTargetOption(
         id: "window-1",

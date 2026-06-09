@@ -126,6 +126,21 @@ struct WindowSelectionOverlayModel: Equatable {
     }
 }
 
+struct WindowSelectionTargetPresentation: Equatable {
+    var showsCardContent = false
+    var fillOpacity: Double
+    var strokeOpacity: Double
+    var lineWidth: CGFloat
+    var cornerRadius: CGFloat
+
+    init(isHighlighted: Bool) {
+        fillOpacity = isHighlighted ? 0.08 : 0
+        strokeOpacity = isHighlighted ? 1 : 0
+        lineWidth = isHighlighted ? 4 : 1
+        cornerRadius = 10
+    }
+}
+
 struct WindowSelectionOverlayLayout: Equatable {
     static func panelFrames(for screenFrames: [CGRect], fallbackFrame: CGRect = .zero) -> [CGRect] {
         let frames = screenFrames.filter { !$0.isEmpty }
@@ -295,9 +310,6 @@ struct WindowSelectionOverlayView: View {
         ZStack {
             Color.black.opacity(0.28)
                 .ignoresSafeArea()
-                .onTapGesture {
-                    cancel()
-                }
 
             GeometryReader { proxy in
                 ZStack {
@@ -370,41 +382,19 @@ struct WindowSelectionOverlayView: View {
 
     private func windowTarget(_ target: SourceTargetOption, frame: CGRect) -> some View {
         let isHighlighted = model.highlightedTargetID == target.id
+        let presentation = WindowSelectionTargetPresentation(isHighlighted: isHighlighted)
 
-        return Button {
-            if let targetID = model.click(targetID: target.id) {
-                onSelect(targetID)
-            }
-        } label: {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 8) {
-                    Image(systemName: "macwindow")
-                        .font(.system(size: 18, weight: .semibold))
-                    Text(target.title)
-                        .font(.headline)
-                        .lineLimit(1)
-                    Spacer()
-                }
-
-                Text(target.subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            .padding(14)
-            .frame(width: frame.width, height: frame.height, alignment: .topLeading)
-            .background(.regularMaterial)
+        return RoundedRectangle(cornerRadius: presentation.cornerRadius)
+            .fill(Color.accentColor.opacity(presentation.fillOpacity))
             .overlay {
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(isHighlighted ? Color.accentColor : Color.white.opacity(0.7), lineWidth: isHighlighted ? 4 : 1)
+                RoundedRectangle(cornerRadius: presentation.cornerRadius)
+                    .stroke(Color.accentColor.opacity(presentation.strokeOpacity), lineWidth: presentation.lineWidth)
             }
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-            .shadow(color: .black.opacity(isHighlighted ? 0.28 : 0.16), radius: isHighlighted ? 20 : 10, y: 8)
-            .scaleEffect(isHighlighted ? 1.02 : 1)
-        }
-        .buttonStyle(.plain)
-        .position(x: frame.midX, y: frame.midY)
-        .animation(.easeOut(duration: 0.12), value: isHighlighted)
+            .frame(width: frame.width, height: frame.height, alignment: .topLeading)
+            .shadow(color: Color.accentColor.opacity(isHighlighted ? 0.24 : 0), radius: isHighlighted ? 16 : 0)
+            .position(x: frame.midX, y: frame.midY)
+            .allowsHitTesting(false)
+            .animation(.easeOut(duration: 0.12), value: isHighlighted)
     }
 
 }
