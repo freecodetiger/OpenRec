@@ -601,8 +601,8 @@ import Foundation
                     id: WindowID(rawValue: 7),
                     title: "External Window",
                     owningApplicationName: "Editor",
-                    pixelSize: CGSize(width: 76, height: 48),
-                    screenFrame: CGRect(x: 1536, y: -1440, width: 38, height: 24),
+                    pixelSize: CGSize(width: 800, height: 500),
+                    screenFrame: CGRect(x: 120, y: -1320, width: 400, height: 250),
                     isAvailable: true
                 )
             ]
@@ -629,7 +629,92 @@ import Foundation
     let snapshot = await adapter.refresh()
     let windowTarget = snapshot.availableTargets.first { $0.source == .window(WindowID(rawValue: 7)) }
 
-    #expect(windowTarget?.screenFrame == CGRect(x: 1536, y: 2248, width: 38, height: 24))
+    #expect(windowTarget?.screenFrame == CGRect(x: 120, y: 1902, width: 400, height: 250))
+}
+
+@MainActor
+@Test func productionAdapterFiltersSystemWindowsFromWindowRecordingTargets() async {
+    let adapter = OpenRecAppCoreAdapter(
+        settingsStore: SettingsStore(settingsDirectory: temporarySettingsDirectory()),
+        captureSourceProvider: InMemoryCaptureSourceProvider(
+            displays: [
+                DisplaySourceMetadata(
+                    id: DisplayID(rawValue: 1),
+                    name: "Built-in Display",
+                    pixelSize: CGSize(width: 2560, height: 1664),
+                    isAvailable: true
+                )
+            ],
+            windows: [
+                WindowSourceMetadata(
+                    id: WindowID(rawValue: 1),
+                    title: "Wallpaper-",
+                    owningApplicationName: "程序坞",
+                    pixelSize: CGSize(width: 2560, height: 1664),
+                    screenFrame: CGRect(x: 0, y: 0, width: 1280, height: 832),
+                    isAvailable: true
+                ),
+                WindowSourceMetadata(
+                    id: WindowID(rawValue: 2),
+                    title: "Desktop",
+                    owningApplicationName: nil,
+                    pixelSize: CGSize(width: 2560, height: 1664),
+                    screenFrame: CGRect(x: 0, y: 0, width: 1280, height: 832),
+                    isAvailable: true
+                ),
+                WindowSourceMetadata(
+                    id: WindowID(rawValue: 3),
+                    title: "Dock",
+                    owningApplicationName: "程序坞",
+                    pixelSize: CGSize(width: 2560, height: 1664),
+                    screenFrame: CGRect(x: 0, y: 0, width: 1280, height: 832),
+                    isAvailable: true
+                ),
+                WindowSourceMetadata(
+                    id: WindowID(rawValue: 4),
+                    title: "Menubar",
+                    owningApplicationName: nil,
+                    pixelSize: CGSize(width: 2560, height: 66),
+                    screenFrame: CGRect(x: 0, y: 0, width: 1280, height: 33),
+                    isAvailable: true
+                ),
+                WindowSourceMetadata(
+                    id: WindowID(rawValue: 5),
+                    title: "Gesture Blocking Overlay",
+                    owningApplicationName: "WindowManager",
+                    pixelSize: CGSize(width: 206, height: 270),
+                    screenFrame: CGRect(x: 16, y: 160, width: 103, height: 135),
+                    isAvailable: true
+                ),
+                WindowSourceMetadata(
+                    id: WindowID(rawValue: 6),
+                    title: "Database Video",
+                    owningApplicationName: "Google Chrome",
+                    pixelSize: CGSize(width: 2228, height: 1458),
+                    screenFrame: CGRect(x: 159, y: 34, width: 1114, height: 729),
+                    isAvailable: true
+                )
+            ]
+        ),
+        audioDeviceProvider: InMemoryAudioDeviceProvider(devices: [
+            MicrophoneDevice(id: "mic-1", name: "Built-in Microphone", isDefault: true)
+        ]),
+        permissionChecker: PermissionChecker(provider: InMemoryPermissionStatusProvider(
+            statuses: Dictionary(uniqueKeysWithValues: PermissionKind.allCases.map { ($0, .granted) })
+        )),
+        hotkeyManager: HotkeyManager(registry: InMemoryHotkeyRegistry()),
+        screenFrameConverter: WindowScreenFrameConverter(displays: [
+            WindowScreenFrameConverter.DisplayFrame(
+                appKitFrame: CGRect(x: 0, y: 0, width: 1280, height: 832),
+                coreGraphicsFrame: CGRect(x: 0, y: 0, width: 1280, height: 832)
+            )
+        ])
+    )
+
+    let snapshot = await adapter.refresh()
+    let windowTargets = snapshot.availableTargets.filter { $0.mode == .window }
+
+    #expect(windowTargets.map(\.source) == [.window(WindowID(rawValue: 6))])
 }
 
 @MainActor

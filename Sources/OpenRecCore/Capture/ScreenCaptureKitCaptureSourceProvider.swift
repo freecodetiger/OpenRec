@@ -43,7 +43,7 @@ public struct ScreenCaptureKitCaptureSourceProvider: CaptureSourceProvider {
 
     private func shareableContent() async throws -> SCShareableContent {
         try await SCShareableContent.excludingDesktopWindows(
-            false,
+            true,
             onScreenWindowsOnly: true
         )
     }

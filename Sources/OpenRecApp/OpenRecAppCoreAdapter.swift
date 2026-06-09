@@ -432,7 +432,7 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
                 title: display.name,
                 subtitle: pixelSizeSubtitle(display.pixelSize)
             )
-        } + windows.map { window in
+        } + windows.filter(Self.isRecordableWindow).map { window in
             SourceTargetOption(
                 id: "window-\(window.id.rawValue)",
                 mode: .window,
@@ -442,6 +442,43 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
                 screenFrame: screenFrameConverter.appKitFrame(fromScreenCaptureKitFrame: window.screenFrame)
             )
         }
+    }
+
+    private static func isRecordableWindow(_ window: WindowSourceMetadata) -> Bool {
+        guard window.isAvailable,
+              let screenFrame = window.screenFrame,
+              screenFrame.width >= 160,
+              screenFrame.height >= 80,
+              !window.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              let applicationName = window.owningApplicationName?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !applicationName.isEmpty else {
+            return false
+        }
+
+        let lowercasedTitle = window.title.lowercased()
+        let lowercasedApplicationName = applicationName.lowercased()
+        let excludedApplications = [
+            "dock",
+            "程序坞",
+            "windowmanager",
+            "控制中心",
+            "control center",
+            "textinputmenuagent",
+            "openrec"
+        ]
+        let excludedTitles = [
+            "wallpaper",
+            "desktop",
+            "dock",
+            "menubar",
+            "statusindicator",
+            "gesture blocking overlay",
+            "app icon window",
+            "item-0"
+        ]
+
+        return !excludedApplications.contains(lowercasedApplicationName) &&
+            !excludedTitles.contains { lowercasedTitle.contains($0) }
     }
 
     private func microphoneOptions() -> [MicrophoneOption] {
