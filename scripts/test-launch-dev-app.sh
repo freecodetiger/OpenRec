@@ -1,7 +1,8 @@
 #!/bin/sh
 set -eu
 
-ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd -P)"
+ROOT_DIR="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)"
 APP_PATH="$ROOT_DIR/.build/OpenRec-dev.app"
 
 OPENREC_DEV_NO_OPEN=1 "$ROOT_DIR/scripts/launch-dev-app.sh" >/tmp/openrec-launch-dev-app-test.log

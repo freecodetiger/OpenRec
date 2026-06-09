@@ -2,17 +2,51 @@
 
 Use this checklist for release-candidate testing. Record the macOS version, Mac model, CPU architecture, display setup, OpenRec commit SHA or tag, artifact source, and whether the app was launched through SwiftPM or a locally built unsigned app bundle.
 
+## Release Candidate Record
+
+Copy this block for each release candidate and complete it before approving the candidate.
+
+| Field | Value |
+| --- | --- |
+| Tester | |
+| Test date | |
+| Commit SHA | |
+| Tag | |
+| Artifact name and path or URL | |
+| Artifact type: source ZIP, SwiftPM checkout, unsigned/ad-hoc app bundle, signed/notarized app bundle | |
+| Artifact SHA-256 | |
+| macOS version | |
+| Mac model | |
+| Hardware: Apple Silicon or Intel | |
+| Display setup: single-screen or multi-screen | |
+| Window recording result | |
+| App window recording result | |
+| Microphone device and result | |
+| Playback quality result: video, audio, sync, file opens in QuickTime/Finder | |
+| Permission revocation result: Screen Recording and Microphone revoked then detected | |
+| Save cancellation result: cancel save panel discards temporary recording and returns to Ready | |
+| Gatekeeper/signing observation | |
+| Overall result: pass/fail | |
+| Blocking issues | |
+
 ## Automated Verification
 
 These checks can run in CI or on a developer machine without exercising real capture permissions.
 
 - [ ] `swift build` succeeds on macOS 14 or later.
+- [ ] `swift build -c release` succeeds on macOS 14 or later.
 - [ ] `swift test` succeeds on macOS 14 or later.
 - [ ] `git diff --check` reports no whitespace errors.
-- [ ] `scripts/test-package-release.sh` creates and validates a source ZIP.
-- [ ] Release tag workflow uploads `dist/OpenRec-<tag>.zip` as an artifact.
+- [ ] `scripts/test-release-artifact.sh` exports `git archive HEAD` to a temporary directory and runs the release artifact smoke command.
+- [ ] `scripts/test-package-release.sh` validates unsigned app packaging, checksum output, artifact naming, and signing/notarization dry-run logging.
+- [ ] `scripts/test-package-app.sh` builds the SwiftPM release executable and validates `dist/OpenRec.app` bundle metadata.
+- [ ] `scripts/test-launch-dev-app.sh` validates the development app bundle wrapper and stable ad-hoc signing requirement.
+- [ ] Release tag workflow uploads `dist/OpenRec-<tag>.zip`, `dist/OpenRec-<tag>-macos.zip`, and `.sha256` files as artifacts.
 - [ ] Source ZIP contains `Package.swift`, `README.md`, `Sources/`, `Tests/`, `docs/`, and `scripts/`.
-- [ ] Source ZIP does not claim to contain a signed `.app`, notarized archive, installer, updater, telemetry, or network service.
+- [ ] macOS app ZIP contains `OpenRec.app` and has a matching SHA-256 checksum file.
+- [ ] Without signing credentials, package logs clearly identify the macOS app artifact as unsigned or ad-hoc signed.
+- [ ] With Developer ID and notary credentials in a dry-run, package logs include hardened runtime `codesign`, `notarytool submit --wait`, and `stapler staple` steps without printing secret values.
+- [ ] Source ZIP and macOS app ZIP do not claim to contain an installer, updater, telemetry, or network service.
 - [ ] README build, release-stage, privacy, Gatekeeper, and license notes match the shipped artifact.
 
 ## Manual Hardware Matrix
@@ -30,14 +64,14 @@ These checks require real macOS hardware because ScreenCaptureKit, permissions, 
 
 ## Launch and Permissions
 
-- [ ] App launches through the current supported path: `swift run OpenRecApp` or a locally built unsigned app bundle.
+- [ ] App launches through the current supported path: `swift run OpenRecApp`, the development app wrapper, or the packaged release app artifact under test.
 - [ ] First launch explains Screen Recording permission and links to System Settings.
 - [ ] First launch explains Microphone permission and links to System Settings.
 - [ ] First launch explains Accessibility or Input Monitoring permission if required by the final hotkey or window-selection implementation.
 - [ ] Permission status can be refreshed after granting, denying, or revoking in System Settings.
 - [ ] Starting a recording is blocked with a recoverable error when Screen Recording permission is missing.
 - [ ] Microphone denial is handled before recording starts or by requiring a valid microphone selection.
-- [ ] Unsigned local app bundle launch path and Gatekeeper warning match README wording.
+- [ ] Unsigned/ad-hoc or signed/notarized app bundle launch path and Gatekeeper warning match README wording.
 
 ## Display Recording
 

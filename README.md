@@ -18,7 +18,7 @@ OpenRec is an open-source macOS screen recorder intended as a lightweight QuickT
 - Original source resolution only.
 - Save panel after recording; cancelling the save panel discards the temporary recording.
 
-Out of scope for the MVP: system audio, pause/resume, countdowns, recording history, save retry after cancellation, built-in editing, uploads, telemetry, automatic updates, signing, notarization, Mac App Store distribution, and arbitrary resolution controls.
+Out of scope for the MVP: system audio, pause/resume, countdowns, recording history, save retry after cancellation, built-in editing, uploads, telemetry, automatic updates, Mac App Store distribution, and arbitrary resolution controls.
 
 ## Build and Test
 
@@ -45,13 +45,29 @@ swift run OpenRecApp
 
 These are developer launch paths, not end-user app distribution paths. macOS permissions such as Screen Recording, Microphone, and global hotkey access must still be granted on real hardware.
 
-For release tags, CI also creates a source ZIP artifact:
+For release tags, CI creates release artifacts:
 
 ```sh
 scripts/package-release.sh
 ```
 
-The ZIP is written to `dist/` and contains the repository source at the tagged commit. It does not contain a prebuilt `.app`, code signature, notarization ticket, Sparkle feed, updater, or installer.
+The source ZIP is written to `dist/OpenRec-<tag>.zip` and contains the repository source at the tagged commit. Treat this artifact like source code: unzip it, inspect it, then build or test it locally with SwiftPM.
+
+Release artifact smoke testing is intentionally run from an exported source tree so uncommitted local files cannot affect the result:
+
+```sh
+scripts/test-release-artifact.sh
+```
+
+By default the smoke test exports `git archive HEAD` to a temporary directory and runs `swift test` there. To validate a packaged source ZIP instead, pass the ZIP path:
+
+```sh
+scripts/test-release-artifact.sh dist/OpenRec-<tag>.zip
+```
+
+For unusually constrained CI jobs, `OPENREC_RELEASE_SMOKE_COMMAND` can replace the default `swift test` command with another lightweight validation command.
+
+The package script also creates `dist/OpenRec-<version>-macos.zip`, which contains `OpenRec.app`, plus a `.sha256` checksum file. Without Developer ID signing variables, this app artifact is unsigned or ad-hoc signed only. It does not include a Sparkle feed, updater, installer, telemetry, or network service.
 
 ## Privacy
 
@@ -65,9 +81,43 @@ OpenRec is designed to run fully offline in the MVP:
 - Settings are stored locally as JSON in `~/Library/Application Support/OpenRec/settings.json`.
 - Temporary recordings are local and are cleaned up after save, explicit discard, or save-panel cancellation.
 
-## Release Stage and Gatekeeper
+## Release Artifacts and Gatekeeper
 
-MVP release artifacts are source archives only. If a developer builds an app bundle locally from this source, that local build is unsigned and not notarized unless they add their own signing pipeline. macOS Gatekeeper may block unsigned app bundles after download or transfer. Users may need to manually allow the app in System Settings or use the Finder context menu Open flow for unsigned software they trust.
+OpenRec currently distinguishes two artifact types:
+
+- Source ZIP: a repository source archive for developers. It is expected to build with SwiftPM and is not a macOS application bundle.
+- macOS app artifact: a packaged `OpenRec.app` for manual testing or distribution review. The current CI can build this without Apple credentials by leaving it unsigned or ad-hoc signed.
+
+The development `.app` wrapper created by `scripts/launch-dev-app.sh` is ad-hoc signed for local TCC permission stability only. It is not notarized, is not an end-user release artifact, and does not require Apple Developer credentials.
+
+If a developer builds or distributes an unsigned or ad-hoc signed app bundle from this source, macOS Gatekeeper may block it after download or transfer. Users may need to manually allow the app in System Settings or use the Finder context menu Open flow for unsigned software they trust.
+
+If a release publishes a Developer ID signed and notarized macOS app artifact, verify it before installation with:
+
+```sh
+codesign --verify --deep --strict --verbose=2 OpenRec.app
+spctl -a -vv -t exec OpenRec.app
+xcrun stapler validate OpenRec.app
+```
+
+Developer ID signing and notarization are optional package-script paths. CI only passes these values to the tag packaging step, and the script does not require them for local dry-runs or unsigned artifacts.
+
+Environment variables:
+
+- `OPENREC_VERSION` or `OPENREC_RELEASE_VERSION`: overrides the version used in `dist/OpenRec-<version>.zip`, `dist/OpenRec-<version>-macos.zip`, `CFBundleVersion`, and `CFBundleShortVersionString`. Tags such as `v1.2.3` are used when these are unset.
+- `OPENREC_APP_PATH`: packages an existing `.app` instead of building one with `swift build -c release`.
+- `OPENREC_BUNDLE_ID`: overrides the production bundle identifier, which defaults to `com.freecodetiger.OpenRec`.
+- `OPENREC_SHORT_VERSION`, `OPENREC_BUILD_VERSION`: override generated bundle version metadata.
+- `OPENREC_SIGN_IDENTITY`: Developer ID Application identity for hardened runtime signing.
+- `OPENREC_ENTITLEMENTS`: optional entitlements plist path for `codesign`.
+- `OPENREC_NOTARY_PROFILE`: notarytool keychain profile.
+- `OPENREC_NOTARY_APPLE_ID`, `OPENREC_NOTARY_TEAM_ID`, `OPENREC_NOTARY_PASSWORD`: Apple ID notarization credentials used when no profile is supplied.
+- `OPENREC_AD_HOC_SIGN=1`: ad-hoc sign when no Developer ID identity is configured.
+- `OPENREC_SKIP_CODESIGN=1`: leave the app unsigned even if signing-related variables are present.
+- `OPENREC_DRY_RUN=1`: print signing, notarization, and stapler commands without running them.
+- `OPENREC_PACKAGE_SOURCE_ZIP=0`: skip the source ZIP and only create the macOS app ZIP.
+
+With `OPENREC_SIGN_IDENTITY` and notary credentials set, packaging uses hardened runtime signing, `xcrun notarytool submit --wait`, `xcrun stapler staple`, then creates the final `dist/OpenRec-<version>-macos.zip` and `dist/OpenRec-<version>-macos.zip.sha256`.
 
 ## License
 
