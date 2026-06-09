@@ -95,7 +95,7 @@ struct WindowSelectionOverlayModel: Equatable {
         let scaleY = viewSize.height / overlayScreenFrame.height
         return CGRect(
             x: (screenFrame.minX - overlayScreenFrame.minX) * scaleX,
-            y: (screenFrame.minY - overlayScreenFrame.minY) * scaleY,
+            y: (overlayScreenFrame.maxY - screenFrame.maxY) * scaleY,
             width: screenFrame.width * scaleX,
             height: screenFrame.height * scaleY
         )

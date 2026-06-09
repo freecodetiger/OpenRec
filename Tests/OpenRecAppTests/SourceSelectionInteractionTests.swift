@@ -105,7 +105,7 @@ import Testing
     var overlay = WindowSelectionOverlayModel(targets: [first, second])
 
     overlay.movePointer(
-        to: CGPoint(x: 650, y: 180),
+        to: CGPoint(x: 650, y: 300),
         in: CGSize(width: 1000, height: 600),
         overlayScreenFrame: CGRect(x: 0, y: 0, width: 1000, height: 600)
     )
@@ -176,7 +176,7 @@ import Testing
     var overlay = WindowSelectionOverlayModel(targets: [target])
 
     overlay.movePointer(
-        to: CGPoint(x: 150, y: 150),
+        to: CGPoint(x: 150, y: 300),
         in: CGSize(width: 1000, height: 600),
         overlayScreenFrame: CGRect(x: 0, y: 0, width: 1000, height: 600)
     )
@@ -257,7 +257,7 @@ import Testing
         overlayScreenFrame: CGRect(x: 0, y: 0, width: 1440, height: 900)
     )
 
-    #expect(frame == CGRect(x: 100, y: 200, width: 600, height: 400))
+    #expect(frame == CGRect(x: 100, y: 300, width: 600, height: 400))
 }
 
 @MainActor
@@ -306,7 +306,7 @@ import Testing
         overlayScreenFrame: mainScreen
     )
 
-    #expect(frame == CGRect(x: 120, y: 140, width: 800, height: 500))
+    #expect(frame == CGRect(x: 120, y: 477, width: 800, height: 500))
 }
 
 @MainActor
