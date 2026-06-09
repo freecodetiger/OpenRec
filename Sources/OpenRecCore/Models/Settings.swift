@@ -1,16 +1,37 @@
 public struct AppSettings: Codable, Equatable, Sendable {
     public var schemaVersion: Int
+    public var appLanguage: AppLanguage
     public var recording: RecordingSettings
 
-    public init(schemaVersion: Int, recording: RecordingSettings) {
+    public init(schemaVersion: Int, appLanguage: AppLanguage = .english, recording: RecordingSettings) {
         self.schemaVersion = schemaVersion
+        self.appLanguage = appLanguage
         self.recording = recording
     }
 
     public static let defaults = AppSettings(
         schemaVersion: 1,
+        appLanguage: .english,
         recording: .defaults
     )
+
+    private enum CodingKeys: String, CodingKey {
+        case schemaVersion
+        case appLanguage
+        case recording
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
+        appLanguage = try container.decodeIfPresent(AppLanguage.self, forKey: .appLanguage) ?? .english
+        recording = try container.decode(RecordingSettings.self, forKey: .recording)
+    }
+}
+
+public enum AppLanguage: String, Codable, Equatable, Sendable, CaseIterable {
+    case english
+    case simplifiedChinese
 }
 
 public struct RecordingSettings: Codable, Equatable, Sendable {
@@ -85,4 +106,3 @@ public enum AudioPreset: String, Codable, Equatable, Sendable, CaseIterable {
     case standard
     case high
 }
-

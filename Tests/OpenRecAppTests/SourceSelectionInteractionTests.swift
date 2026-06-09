@@ -185,6 +185,40 @@ import Testing
 }
 
 @MainActor
+@Test func windowSelectionOverlayLockKeepsSelectedWindowHighlighted() {
+    let target = SourceTargetOption(
+        id: "window-1",
+        mode: .window,
+        source: .window(WindowID(rawValue: 1)),
+        title: "Safari - Notes",
+        subtitle: "Window recording target",
+        screenFrame: CGRect(x: 100, y: 100, width: 300, height: 200)
+    )
+    var overlay = WindowSelectionOverlayModel(targets: [target])
+
+    let selectedTargetID = overlay.lockSelection(targetID: "window-1")
+    overlay.movePointer(
+        to: CGPoint(x: 20, y: 20),
+        in: CGSize(width: 1000, height: 600),
+        overlayScreenFrame: CGRect(x: 0, y: 0, width: 1000, height: 600)
+    )
+
+    #expect(selectedTargetID == "window-1")
+    #expect(overlay.selectedTargetID == "window-1")
+    #expect(overlay.highlightedTargetID == "window-1")
+}
+
+@MainActor
+@Test func lockedWindowSelectionPresentationIsLowerDistractionThanHoverHighlight() {
+    let highlightedPresentation = WindowSelectionTargetPresentation(isHighlighted: true)
+    let lockedPresentation = WindowSelectionTargetPresentation(isHighlighted: true, isLocked: true)
+
+    #expect(lockedPresentation.fillOpacity == 0)
+    #expect(lockedPresentation.strokeOpacity < highlightedPresentation.strokeOpacity)
+    #expect(lockedPresentation.lineWidth < highlightedPresentation.lineWidth)
+}
+
+@MainActor
 @Test func windowSelectionOverlayClickAppliesSelection() {
     let adapter = MockAppCoreAdapter(initialSnapshot: .ready)
     let viewModel = AppShellViewModel(adapter: adapter)

@@ -12,7 +12,6 @@ protocol RecordingFileMoving: AnyObject {
     func moveRecording(from sourceURL: URL, to destinationURL: URL) throws
 }
 
-private let hotkeyRegistrationFailureMessage = "OpenRec could not register the global shortcut."
 private let currentlyRequiredPermissions: [PermissionKind] = [.screenRecording, .microphone]
 
 final class OpenRecAppCoreAdapter: AppShellAdapter {
@@ -35,7 +34,12 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
 
     private var displays: [DisplaySourceMetadata]
     private var windows: [WindowSourceMetadata]
+    private var appLanguage: AppLanguage
     private var hotkeyRegistrationErrorMessage: String?
+
+    private var strings: OpenRecLocalization {
+        OpenRecLocalization(appLanguage)
+    }
 
     init(
         settingsStore: SettingsStore,
@@ -59,6 +63,7 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
         self.hotkeyManager = hotkeyManager
         self.displays = []
         self.windows = []
+        self.appLanguage = .english
         self.snapshot = Self.emptySnapshot()
         let sourceValidator = AppCaptureSourceValidator()
         self.sourceValidator = sourceValidator
@@ -103,7 +108,9 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
 
     func refresh() async -> AppShellSnapshot {
         do {
-            let settings = normalizedSettings(try settingsStore.load().recording)
+            let appSettings = try settingsStore.load()
+            appLanguage = appSettings.appLanguage
+            let settings = normalizedSettings(appSettings.recording)
             let permissionStatuses = permissionChecker.statuses()
             let requiredPermissions = requiredPermissions(from: permissionStatuses)
 
@@ -124,7 +131,7 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
                 recordingState: recordingCoordinator.state
             ).withHotkeyRegistrationError(hotkeyRegistrationErrorMessage)
         } catch {
-            snapshot = snapshot.withError(AppErrorPresenter.message(for: error))
+            snapshot = snapshot.withError(AppErrorPresenter.message(for: error, strings: strings))
         }
         return snapshot
     }
@@ -140,7 +147,7 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
             snapshot.settings.globalHotkey = hotkeyManager.savedHotkey
         } catch {
             hotkeyManager.clearSavedHotkey()
-            hotkeyRegistrationErrorMessage = hotkeyRegistrationFailureMessage
+            hotkeyRegistrationErrorMessage = strings.hotkeyRegistrationFailure
             var settings = snapshot.settings
             settings.globalHotkey = nil
             snapshot.settings = settings
@@ -162,7 +169,7 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
             snapshot = buildSnapshot(settings: snapshot.settings, recordingState: recordingCoordinator.state)
         } catch {
             snapshot = buildSnapshot(settings: snapshot.settings, recordingState: recordingCoordinator.state)
-                .withError(AppErrorPresenter.message(for: error))
+                .withError(AppErrorPresenter.message(for: error, strings: strings))
         }
 
         return snapshot
@@ -176,7 +183,7 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
             snapshot = buildSnapshot(settings: snapshot.settings, recordingState: recordingCoordinator.state)
         } catch {
             snapshot = buildSnapshot(settings: snapshot.settings, recordingState: recordingCoordinator.state)
-                .withError(AppErrorPresenter.message(for: error))
+                .withError(AppErrorPresenter.message(for: error, strings: strings))
         }
 
         return snapshot
@@ -223,6 +230,20 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
         }
 
         snapshot = buildSnapshot(settings: settings, recordingState: recordingCoordinator.state)
+        return snapshot
+    }
+
+    func updateAppLanguage(_ language: AppLanguage) -> AppShellSnapshot {
+        guard language != appLanguage else { return snapshot }
+        appLanguage = language
+
+        do {
+            try settingsStore.save(AppSettings(schemaVersion: 1, appLanguage: appLanguage, recording: snapshot.settings))
+            snapshot.appLanguage = appLanguage
+        } catch {
+            snapshot = snapshot.withError(AppErrorPresenter.message(for: error, strings: strings))
+        }
+
         return snapshot
     }
 
@@ -284,7 +305,8 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
             requiredPermissions: requiredPermissions,
             errorMessage: errorMessage(for: recordingState),
             elapsedTimeText: elapsedTimeText(for: recordingState),
-            pendingSaveURL: pendingSaveURL(for: recordingState)
+            pendingSaveURL: pendingSaveURL(for: recordingState),
+            appLanguage: appLanguage
         )
     }
 
@@ -301,7 +323,7 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
                 snapshot = buildSnapshot(settings: snapshot.settings, recordingState: recordingCoordinator.state)
             } catch {
                 snapshot = buildSnapshot(settings: snapshot.settings, recordingState: recordingCoordinator.state)
-                    .withError(AppErrorPresenter.message(for: error))
+                    .withError(AppErrorPresenter.message(for: error, strings: strings))
             }
             return snapshot
         }
@@ -312,7 +334,7 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
             snapshot = buildSnapshot(settings: snapshot.settings, recordingState: recordingCoordinator.state)
         } catch {
             snapshot = buildSnapshot(settings: snapshot.settings, recordingState: recordingCoordinator.state)
-            snapshot.errorMessage = AppErrorPresenter.message(for: error)
+            snapshot.errorMessage = AppErrorPresenter.message(for: error, strings: strings)
         }
 
         return snapshot
@@ -323,7 +345,7 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
 
         let error = recordingCoordinator.saveCancelled()
         snapshot = buildSnapshot(settings: snapshot.settings, recordingState: recordingCoordinator.state)
-        snapshot.errorMessage = AppErrorPresenter.message(for: error)
+        snapshot.errorMessage = AppErrorPresenter.message(for: error, strings: strings)
         return snapshot
     }
 
@@ -335,7 +357,7 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
             snapshot = buildSnapshot(settings: snapshot.settings, recordingState: recordingCoordinator.state)
         } catch {
             snapshot = buildSnapshot(settings: snapshot.settings, recordingState: recordingCoordinator.state)
-                .withError(AppErrorPresenter.message(for: error))
+                .withError(AppErrorPresenter.message(for: error, strings: strings))
         }
 
         return snapshot
@@ -343,10 +365,10 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
 
     private func save(settings: RecordingSettings) -> Bool {
         do {
-            try settingsStore.save(AppSettings(schemaVersion: 1, recording: normalizedSettings(settings)))
+            try settingsStore.save(AppSettings(schemaVersion: 1, appLanguage: appLanguage, recording: normalizedSettings(settings)))
             return true
         } catch {
-            snapshot = snapshot.withError(AppErrorPresenter.message(for: error))
+            snapshot = snapshot.withError(AppErrorPresenter.message(for: error, strings: strings))
             return false
         }
     }
@@ -401,7 +423,8 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
             requiredPermissions: requiredPermissions,
             errorMessage: nil,
             elapsedTimeText: nil,
-            pendingSaveURL: nil
+            pendingSaveURL: nil,
+            appLanguage: appLanguage
         )
     }
 
@@ -415,8 +438,8 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
                 id: "source-unavailable",
                 mode: mode,
                 source: mode == .display ? .display(DisplayID(rawValue: 0)) : .window(WindowID(rawValue: 0)),
-                title: "No Source Selected",
-                subtitle: "Choose an available display or window."
+                title: strings.noSourceSelected,
+                subtitle: strings.chooseAvailableSource
             )
     }
 
@@ -488,7 +511,7 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
                 id: device.id,
                 deviceID: device.id,
                 title: device.name,
-                subtitle: device.isDefault ? "System default input device" : "Input device"
+                subtitle: device.isDefault ? strings.systemDefaultInputDevice : strings.inputDevice
             )
         }
 
@@ -497,8 +520,8 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
                 MicrophoneOption(
                     id: "default",
                     deviceID: nil,
-                    title: "System Default",
-                    subtitle: "Uses the current macOS input device"
+                    title: strings.systemDefault,
+                    subtitle: strings.usesCurrentMacOSInputDevice
                 )
             ]
         }
@@ -541,7 +564,7 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
 
     private func errorMessage(for recordingState: RecordingState) -> String? {
         guard case let .failed(error) = recordingState else { return nil }
-        return AppErrorPresenter.message(for: error)
+        return AppErrorPresenter.message(for: error, strings: strings)
     }
 
     private func elapsedTimeText(for recordingState: RecordingState) -> String? {
@@ -558,14 +581,14 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
         guard let appName = window.owningApplicationName,
               !appName.isEmpty,
               !window.title.isEmpty else {
-            return window.title.isEmpty ? "Untitled Window" : window.title
+            return window.title.isEmpty ? strings.untitledWindow : window.title
         }
 
         return "\(appName) - \(window.title)"
     }
 
     private func pixelSizeSubtitle(_ pixelSize: CGSize) -> String {
-        "\(Int(pixelSize.width)) x \(Int(pixelSize.height)), original resolution"
+        "\(Int(pixelSize.width)) x \(Int(pixelSize.height)), \(strings.originalResolution)"
     }
 
     private static func emptySnapshot() -> AppShellSnapshot {
@@ -594,13 +617,16 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
             requiredPermissions: currentlyRequiredPermissions,
             errorMessage: "Choose an available display or window.",
             elapsedTimeText: nil,
-            pendingSaveURL: nil
+            pendingSaveURL: nil,
+            appLanguage: .english
         )
     }
 }
 
 @MainActor
 private final class NSSavePanelRecordingSavePanel: RecordingSavePanelPresenting {
+    private let windowPresenter = UserWindowPresenter()
+
     func destinationURL(defaultFileName: String) -> URL? {
         let panel = NSSavePanel()
         panel.nameFieldStringValue = defaultFileName
@@ -614,6 +640,7 @@ private final class NSSavePanelRecordingSavePanel: RecordingSavePanelPresenting 
         default:
             break
         }
+        windowPresenter.activateApplication()
         return panel.runModal() == .OK ? panel.url : nil
     }
 }
@@ -659,32 +686,32 @@ private extension AppShellSnapshot {
 }
 
 private enum AppErrorPresenter {
-    static func message(for error: any Error) -> String {
+    static func message(for error: any Error, strings: OpenRecLocalization) -> String {
         if let error = error as? OpenRecError {
-            return message(for: error)
+            return message(for: error, strings: strings)
         }
 
-        return "OpenRec could not update recording state."
+        return strings.recordingStateUpdateFailure
     }
 
-    static func message(for error: OpenRecError) -> String {
+    static func message(for error: OpenRecError, strings: OpenRecLocalization) -> String {
         switch error {
         case .permissionDenied:
-            return "OpenRec needs macOS permissions before recording."
+            return strings.statusDetail(.permissionRequired)
         case .captureSourceUnavailable:
-            return "The selected source is no longer available."
+            return strings.sourceUnavailable
         case let .captureConfigurationInvalid(reason):
             return reason
         case .microphoneUnavailable:
-            return "No microphone input is available."
+            return strings.microphoneUnavailable
         case .hotkeyConflict:
-            return "That global shortcut is already in use."
+            return strings.hotkeyConflict
         case let .writerInitializationFailed(reason):
             return reason
         case let .writerFailed(reason):
             return reason
         case .saveCancelled:
-            return "Choose a save location or discard the recording."
+            return strings.chooseSaveLocationOrDiscard
         case let .unknown(reason):
             return reason
         }

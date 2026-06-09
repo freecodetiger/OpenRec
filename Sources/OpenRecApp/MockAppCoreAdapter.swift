@@ -15,11 +15,13 @@ final class MockAppCoreAdapter: AppShellAdapter {
     private(set) var selectModes: [CaptureMode] = []
     private(set) var selectTargetIDs: [String] = []
     private(set) var updatedSettings: [RecordingSettings] = []
+    private(set) var updatedLanguages: [AppLanguage] = []
     private(set) var openedPermissionSettings: [PermissionKind] = []
     private(set) var requestedPermissions: [PermissionKind] = []
     private(set) var reopenApplicationCallCount = 0
     var permissionRefreshSnapshot: AppShellSnapshot?
     var stopRecordingSnapshot: AppShellSnapshot?
+    var onSaveRecording: (() -> Void)?
     private let hotkeyManager: HotkeyManager?
 
     init(initialSnapshot: AppShellSnapshot = .ready, hotkeyManager: HotkeyManager? = nil) {
@@ -110,6 +112,12 @@ final class MockAppCoreAdapter: AppShellAdapter {
         return snapshot
     }
 
+    func updateAppLanguage(_ language: AppLanguage) -> AppShellSnapshot {
+        updatedLanguages.append(language)
+        snapshot.appLanguage = language
+        return snapshot
+    }
+
     func openPermissionSettings(for kind: PermissionKind) -> AppShellSnapshot {
         openedPermissionSettings.append(kind)
         return snapshot
@@ -135,6 +143,7 @@ final class MockAppCoreAdapter: AppShellAdapter {
     func saveRecording() -> AppShellSnapshot {
         guard snapshot.status == .awaitingSave else { return snapshot }
         saveRecordingCallCount += 1
+        onSaveRecording?()
         snapshot.status = .ready
         snapshot.errorMessage = nil
         snapshot.pendingSaveURL = nil

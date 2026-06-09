@@ -27,13 +27,14 @@ public enum ConfigurationResolver {
             pixelSize: metadata.pixelSize,
             outputFormat: settings.outputFormat,
             videoCodec: settings.videoCodec,
-            bitrate: Self.bitrate(
+            bitrate: Self.videoBitrate(
                 pixelSize: metadata.pixelSize,
                 frameRate: settings.frameRate,
                 qualityPreset: settings.qualityPreset,
                 codec: settings.videoCodec
             ),
             frameRate: settings.frameRate.rawValue,
+            audioPreset: settings.audioPreset,
             includeCursor: settings.includeCursor,
             microphoneDeviceID: settings.microphoneDeviceID
         )
@@ -46,7 +47,7 @@ public enum ConfigurationResolver {
             pixelSize.height > 0
     }
 
-    private static func bitrate(
+    public static func videoBitrate(
         pixelSize: CGSize,
         frameRate: FrameRatePreset,
         qualityPreset: QualityPreset,

@@ -69,3 +69,5 @@ final class AppKitStatusItemController: NSObject, ObservableObject {
         }
     }
 }
+
+extension AppKitStatusItemController: StatusSymbolRefreshing {}

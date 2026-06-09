@@ -67,6 +67,7 @@ public final class ScreenCaptureRecordingEngine: RecordingEngine, @unchecked Sen
             )
             let microphoneCaptureSession = try startMicrophoneCaptureIfNeeded(
                 configuration: configuration,
+                captureSession: captureSession,
                 writer: createdWriter
             )
 
@@ -125,9 +126,14 @@ public final class ScreenCaptureRecordingEngine: RecordingEngine, @unchecked Sen
 
     private func startMicrophoneCaptureIfNeeded(
         configuration: ResolvedRecordingConfiguration,
+        captureSession: any RecordingCaptureSession,
         writer: any RecordingOutputWriter
     ) throws -> (any MicrophoneCaptureSession)? {
         guard let microphoneDeviceID = configuration.microphoneDeviceID else {
+            return nil
+        }
+
+        guard !captureSession.capturesMicrophone else {
             return nil
         }
 

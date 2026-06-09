@@ -57,7 +57,16 @@ public struct RecordingOutputWriterSettings {
         self.frameRate = configuration.frameRate
         self.audioSampleRate = 48_000
         self.audioChannelCount = 2
-        self.audioBitrate = 128_000
+        self.audioBitrate = Self.audioBitrate(for: configuration.audioPreset)
+    }
+
+    public static func audioBitrate(for preset: AudioPreset) -> Int {
+        switch preset {
+        case .standard:
+            128_000
+        case .high:
+            256_000
+        }
     }
 
     public var videoOutputSettings: [String: Any] {
@@ -65,6 +74,11 @@ public struct RecordingOutputWriterSettings {
             AVVideoCodecKey: videoCodec,
             AVVideoWidthKey: videoWidth,
             AVVideoHeightKey: videoHeight,
+            AVVideoColorPropertiesKey: [
+                AVVideoColorPrimariesKey: AVVideoColorPrimaries_ITU_R_709_2,
+                AVVideoTransferFunctionKey: AVVideoTransferFunction_ITU_R_709_2,
+                AVVideoYCbCrMatrixKey: AVVideoYCbCrMatrix_ITU_R_709_2
+            ],
             AVVideoCompressionPropertiesKey: [
                 AVVideoAverageBitRateKey: videoBitrate,
                 AVVideoExpectedSourceFrameRateKey: frameRate,

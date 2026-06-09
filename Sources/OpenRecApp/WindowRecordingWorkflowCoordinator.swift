@@ -10,6 +10,10 @@ final class WindowRecordingWorkflowCoordinator: ObservableObject {
     private let controlBarPresenter: WindowRecordingControlBarPresenter
     private let applicationSelectionPresenter: ApplicationSelectionPanelPresenter
 
+    private var strings: OpenRecLocalization {
+        OpenRecLocalization(viewModel.snapshot.appLanguage)
+    }
+
     init(
         viewModel: AppShellViewModel,
         selectionPresenter: WindowSelectionOverlayPresenter = WindowSelectionOverlayPresenter(),
@@ -32,6 +36,7 @@ final class WindowRecordingWorkflowCoordinator: ObservableObject {
 
         selectionPresenter.present(
             targets: viewModel.snapshot.availableTargets,
+            persistsAfterSelection: true,
             onSelect: { [weak self] targetID in
                 self?.selectWindow(targetID: targetID)
             },
@@ -46,8 +51,8 @@ final class WindowRecordingWorkflowCoordinator: ObservableObject {
         let applications = viewModel.applicationTargets
         guard !applications.isEmpty else {
             showAlert(
-                messageText: "No Recordable Applications",
-                informativeText: "Open an application window and try Application Recording again."
+                messageText: strings.noRecordableApplicationsTitle,
+                informativeText: strings.noRecordableApplicationsDetail
             )
             return
         }
@@ -55,6 +60,7 @@ final class WindowRecordingWorkflowCoordinator: ObservableObject {
 
         applicationSelectionPresenter.present(
             applications: applications,
+            strings: strings,
             onSelectApplication: { [weak self] applicationID in
                 self?.selectApplication(applicationID: applicationID)
             },
@@ -70,6 +76,14 @@ final class WindowRecordingWorkflowCoordinator: ObservableObject {
         applicationSelectionPresenter.dismiss()
     }
 
+    func recordingDidStart() {
+        if !selectionPresenter.isLockedSelectionVisible {
+            selectionPresenter.dismiss()
+        }
+        controlBarPresenter.dismiss()
+        applicationSelectionPresenter.dismiss()
+    }
+
     private func selectApplication(applicationID: String) {
         viewModel.selectApplicationForRecording(applicationName: applicationID)
         guard case let .selectingApplicationWindow(_, _, applicationName) = viewModel.windowRecordingWorkflow,
@@ -79,6 +93,7 @@ final class WindowRecordingWorkflowCoordinator: ObservableObject {
 
         selectionPresenter.present(
             targets: application.windows,
+            persistsAfterSelection: true,
             onSelect: { [weak self] targetID in
                 self?.selectWindow(targetID: targetID)
             },
@@ -105,6 +120,7 @@ final class WindowRecordingWorkflowCoordinator: ObservableObject {
                 self?.viewModel.startConfiguredWindowRecording()
             },
             onCancel: { [weak self] in
+                self?.selectionPresenter.dismiss()
                 self?.viewModel.cancelWindowRecordingWorkflow()
             }
         )
@@ -112,8 +128,8 @@ final class WindowRecordingWorkflowCoordinator: ObservableObject {
 
     private func showNoWindowsAlert() {
         showAlert(
-            messageText: "No Recordable Windows",
-            informativeText: "Open a window and try Window Recording again."
+            messageText: strings.noRecordableWindowsTitle,
+            informativeText: strings.noRecordableWindowsDetail
         )
     }
 
@@ -122,7 +138,7 @@ final class WindowRecordingWorkflowCoordinator: ObservableObject {
         alert.messageText = messageText
         alert.informativeText = informativeText
         alert.alertStyle = .informational
-        alert.addButton(withTitle: "OK")
+        alert.addButton(withTitle: strings.ok)
         alert.runModal()
     }
 }

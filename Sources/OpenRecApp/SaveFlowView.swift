@@ -6,18 +6,22 @@ struct SaveFlowView: View {
     var onRetrySave: () -> Void = {}
     var onDiscard: () -> Void = {}
 
+    private var strings: OpenRecLocalization {
+        OpenRecLocalization(snapshot.appLanguage)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            Label("Save Recording", systemImage: "square.and.arrow.down")
+            Label(strings.saveRecordingTitle, systemImage: "square.and.arrow.down")
                 .font(.title2.weight(.semibold))
 
-            Text("Choose where to save the finished recording.")
+            Text(strings.saveRecordingDetail)
                 .foregroundStyle(.secondary)
 
-            LabeledContent("Status", value: snapshot.status.title)
-            LabeledContent("Target", value: snapshot.selectedTarget.summary)
+            LabeledContent(strings.status, value: strings.statusTitle(snapshot.status))
+            LabeledContent(strings.target, value: snapshot.selectedTarget.summary)
             if let pendingSaveURL = snapshot.pendingSaveURL {
-                LabeledContent("Temporary File", value: pendingSaveURL.lastPathComponent)
+                LabeledContent(strings.temporaryFile, value: pendingSaveURL.lastPathComponent)
             }
             if let errorMessage = snapshot.errorMessage {
                 Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
@@ -25,11 +29,11 @@ struct SaveFlowView: View {
             }
 
             HStack {
-                Button("Save As...", action: onSave)
+                Button(strings.saveAs, action: onSave)
                     .disabled(!canUseSaveActions)
-                Button("Retry Save", action: onRetrySave)
+                Button(strings.retrySave, action: onRetrySave)
                     .disabled(!canUseSaveActions)
-                Button("Discard", role: .destructive, action: onDiscard)
+                Button(strings.discard, role: .destructive, action: onDiscard)
                     .disabled(!canUseSaveActions)
             }
         }

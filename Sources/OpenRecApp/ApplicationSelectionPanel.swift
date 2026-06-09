@@ -7,6 +7,7 @@ final class ApplicationSelectionPanelPresenter {
 
     func present(
         applications: [ApplicationTargetOption],
+        strings: OpenRecLocalization,
         onSelectApplication: @escaping @MainActor (String) -> Void,
         onCancel: @escaping @MainActor () -> Void
     ) {
@@ -14,6 +15,7 @@ final class ApplicationSelectionPanelPresenter {
 
         let panel = ApplicationSelectionPanel(
             contentRect: Self.panelFrame(),
+            title: strings.chooseApplicationTitle,
             onCancel: { [weak self] in
                 self?.dismiss()
                 onCancel()
@@ -22,6 +24,7 @@ final class ApplicationSelectionPanelPresenter {
         panel.contentView = NSHostingView(
             rootView: ApplicationSelectionView(
                 applications: applications,
+                strings: strings,
                 onSelectApplication: { [weak self] applicationID in
                     self?.dismiss()
                     onSelectApplication(applicationID)
@@ -57,6 +60,7 @@ final class ApplicationSelectionPanelPresenter {
 
 private struct ApplicationSelectionView: View {
     var applications: [ApplicationTargetOption]
+    var strings: OpenRecLocalization
     var onSelectApplication: @MainActor (String) -> Void
     var onCancel: @MainActor () -> Void
 
@@ -65,7 +69,7 @@ private struct ApplicationSelectionView: View {
             HStack(spacing: 10) {
                 Image(systemName: "square.stack.3d.up")
                     .font(.title2)
-                Text("Choose Application")
+                Text(strings.chooseApplicationTitle)
                     .font(.headline)
                 Spacer()
             }
@@ -80,7 +84,7 @@ private struct ApplicationSelectionView: View {
                             .foregroundStyle(.secondary)
                         VStack(alignment: .leading, spacing: 3) {
                             Text(application.title)
-                            Text(application.subtitle)
+                            Text(strings.applicationWindowCount(application.windows.count))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -95,7 +99,7 @@ private struct ApplicationSelectionView: View {
 
             HStack {
                 Spacer()
-                Button("Cancel") {
+                Button(strings.cancel) {
                     onCancel()
                 }
                 .keyboardShortcut(.cancelAction)
@@ -112,6 +116,7 @@ private final class ApplicationSelectionPanel: NSPanel {
 
     init(
         contentRect: CGRect,
+        title: String,
         onCancel: @escaping @MainActor () -> Void
     ) {
         self.onCancel = onCancel
@@ -121,7 +126,7 @@ private final class ApplicationSelectionPanel: NSPanel {
             backing: .buffered,
             defer: false
         )
-        title = "Choose Application"
+        self.title = title
         level = .floating
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         isReleasedWhenClosed = false

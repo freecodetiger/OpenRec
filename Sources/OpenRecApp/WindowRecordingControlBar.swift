@@ -60,6 +60,17 @@ struct WindowRecordingControlBarView: View {
 
     @State private var draftSettings: RecordingSettings
 
+    private var strings: OpenRecLocalization {
+        OpenRecLocalization(snapshot.appLanguage)
+    }
+    private var parameterSummary: RecordingParameterSummary {
+        RecordingParameterSummary.make(
+            target: snapshot.selectedTarget,
+            settings: draftSettings,
+            strings: strings
+        )
+    }
+
     init(
         snapshot: AppShellSnapshot,
         onSettingsChange: @escaping @MainActor (RecordingSettings) -> Void = { _ in },
@@ -76,14 +87,28 @@ struct WindowRecordingControlBarView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 10) {
-                settingPicker("Format", selection: settingBinding(\.outputFormat), values: OutputFormat.allCases) { $0.label }
-                settingPicker("Codec", selection: settingBinding(\.videoCodec), values: VideoCodec.allCases) { $0.label }
-                settingPicker("Frame rate", selection: settingBinding(\.frameRate), values: FrameRatePreset.allCases) { $0.label }
-                settingPicker("Quality", selection: settingBinding(\.qualityPreset), values: QualityPreset.allCases) { $0.label }
+                settingPicker(strings.format, selection: settingBinding(\.outputFormat), values: OutputFormat.allCases) { $0.label }
+                settingPicker(strings.codec, selection: settingBinding(\.videoCodec), values: VideoCodec.allCases) { $0.label }
+                settingPicker(strings.frameRate, selection: settingBinding(\.frameRate), values: FrameRatePreset.allCases) { $0.label }
+                settingPicker(strings.quality, selection: settingBinding(\.qualityPreset), values: QualityPreset.allCases) {
+                    strings.qualityLabel($0)
+                }
             }
 
             HStack(spacing: 10) {
-                Picker("Microphone", selection: microphoneBinding) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(strings.quality): \(parameterSummary.bitrateText)")
+                        .font(.caption.weight(.medium))
+                        .monospacedDigit()
+                    Text("\(parameterSummary.videoDetailText) · \(parameterSummary.audioDetailText)")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                .frame(minWidth: 220, alignment: .leading)
+
+                Picker(strings.microphone, selection: microphoneBinding) {
                     ForEach(snapshot.microphones) { microphone in
                         Text(microphone.title).tag(microphone.id)
                     }
@@ -93,12 +118,12 @@ struct WindowRecordingControlBarView: View {
 
                 Spacer(minLength: 8)
 
-                Button("Cancel", role: .cancel) {
+                Button(strings.cancel, role: .cancel) {
                     onCancel()
                 }
                 .keyboardShortcut(.cancelAction)
 
-                Button("Start") {
+                Button(strings.start) {
                     onStart()
                 }
                 .buttonStyle(.borderedProminent)

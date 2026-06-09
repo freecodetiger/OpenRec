@@ -19,6 +19,9 @@ struct OpenRecApplication: App {
         let model = AppShellViewModel(adapter: adapter)
         model.startHotkeyMonitoring()
         let workflowCoordinator = WindowRecordingWorkflowCoordinator(viewModel: model)
+        model.onRecordingStoppedBeforeSave = { [weak workflowCoordinator] in
+            workflowCoordinator?.dismissActivePanels()
+        }
         let statusController = AppKitStatusItemController(viewModel: model)
         workflowCoordinator.closeMenu = { [weak statusController] in
             statusController?.closePopover()
@@ -32,6 +35,12 @@ struct OpenRecApplication: App {
         }
         DispatchQueue.main.async {
             statusController.installIfNeeded()
+            Task {
+                await AppLaunchRefresher(
+                    viewModel: model,
+                    statusSymbolRefresher: statusController
+                ).refreshAfterLaunch()
+            }
         }
         _viewModel = StateObject(wrappedValue: model)
         _statusItemController = StateObject(wrappedValue: statusController)
@@ -53,23 +62,29 @@ struct OpenRecApplication: App {
             Label("OpenRec", systemImage: viewModel.menuBarSymbolName)
         }
         .menuBarExtraStyle(.window)
-        .onChange(of: viewModel.snapshot.status) { _, _ in
+        .onChange(of: viewModel.snapshot.status) { oldStatus, newStatus in
             statusItemController.refreshSymbol()
-            if viewModel.snapshot.status != .ready {
+            switch (oldStatus, newStatus) {
+            case (_, .recording):
+                windowRecordingWorkflowCoordinator.recordingDidStart()
+            case (.recording, _), (_, .permissionRequired), (_, .error):
                 windowRecordingWorkflowCoordinator.dismissActivePanels()
+            default:
+                break
             }
         }
 
-        WindowGroup("Preferences", id: "preferences") {
+        Window("Preferences", id: "preferences") {
             PreferencesView(
                 snapshot: viewModel.snapshot,
                 onSettingsChange: viewModel.updateSettings,
+                onLanguageChange: viewModel.updateAppLanguage,
                 onOpenPermissionSettings: viewModel.openPermissionSettings,
                 onRequestPermission: viewModel.requestPermission,
                 onRefreshPermissions: viewModel.refreshPermissions
             )
         }
-        .defaultSize(width: 560, height: 520)
+        .defaultSize(width: 760, height: 560)
 
         WindowGroup("Onboarding", id: "onboarding") {
             OnboardingView(

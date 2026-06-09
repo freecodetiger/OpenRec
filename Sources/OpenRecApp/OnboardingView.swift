@@ -7,16 +7,21 @@ struct OnboardingView: View {
     var onRequestPermission: (PermissionKind) -> Void = { _ in }
     var onRefreshPermissions: () -> Void = {}
 
+    private var strings: OpenRecLocalization {
+        OpenRecLocalization(snapshot.appLanguage)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
-            Label("OpenRec Permissions", systemImage: "lock.shield")
+            Label(strings.openRecPermissions, systemImage: "lock.shield")
                 .font(.title2.weight(.semibold))
 
-            Text("OpenRec records locally and needs macOS access before capture can start.")
+            Text(strings.permissionsIntro)
                 .foregroundStyle(.secondary)
 
             PermissionPlaceholderView(
                 snapshot: snapshot,
+                strings: strings,
                 onOpenPermissionSettings: onOpenPermissionSettings,
                 onRequestPermission: onRequestPermission
             )
@@ -24,10 +29,10 @@ struct OnboardingView: View {
             Spacer()
 
             HStack {
-                Button("Open System Settings") {
+                Button(strings.openSystemSettings) {
                     onRequestPermission(snapshot.requiredPermissions.first ?? .screenRecording)
                 }
-                Button("Re-check Permissions", action: onRefreshPermissions)
+                Button(strings.recheckPermissions, action: onRefreshPermissions)
             }
         }
         .padding(28)
@@ -36,6 +41,7 @@ struct OnboardingView: View {
 
 struct PermissionPlaceholderView: View {
     var snapshot: AppShellSnapshot
+    var strings: OpenRecLocalization = OpenRecLocalization(.english)
     var onOpenPermissionSettings: (PermissionKind) -> Void = { _ in }
     var onRequestPermission: (PermissionKind) -> Void = { _ in }
 
@@ -46,13 +52,13 @@ struct PermissionPlaceholderView: View {
                     Image(systemName: item.isGranted ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
                         .foregroundStyle(item.isGranted ? .green : .orange)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(item.title)
-                        Text(item.reason)
+                        Text(strings.permissionTitle(item.kind))
+                        Text(strings.permissionReason(item.kind))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Button("Open Settings") {
+                    Button(strings.openSettings) {
                         onRequestPermission(item.kind)
                     }
                 }

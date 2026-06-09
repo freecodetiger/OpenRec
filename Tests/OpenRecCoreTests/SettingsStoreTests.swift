@@ -21,6 +21,7 @@ struct SettingsStoreTests {
         let directory = try temporaryDirectory()
         let store = SettingsStore(settingsDirectory: directory)
         var settings = AppSettings.defaults
+        settings.appLanguage = .simplifiedChinese
         settings.recording.outputFormat = .mov
         settings.recording.videoCodec = .hevc
         settings.recording.frameRate = .fps60
@@ -31,6 +32,32 @@ struct SettingsStoreTests {
 
         let reloaded = try SettingsStore(settingsDirectory: directory).load()
         #expect(reloaded == settings)
+    }
+
+    @Test func loadDefaultsLanguageWhenExistingSettingsOmitLanguage() throws {
+        let directory = try temporaryDirectory()
+        let settingsFile = directory.appending(path: "settings.json")
+        let legacyJSON = """
+        {
+          "schemaVersion" : 1,
+          "recording" : {
+            "audioPreset" : "standard",
+            "defaultMode" : "display",
+            "frameRate" : 30,
+            "globalHotkey" : null,
+            "includeCursor" : true,
+            "microphoneDeviceID" : null,
+            "outputFormat" : "mp4",
+            "qualityPreset" : "standard",
+            "videoCodec" : "h264"
+          }
+        }
+        """
+        try Data(legacyJSON.utf8).write(to: settingsFile)
+
+        let reloaded = try SettingsStore(settingsDirectory: directory).load()
+
+        #expect(reloaded.appLanguage == .english)
     }
 
     @Test func defaultStorePathUsesInjectedApplicationSupportDirectory() {

@@ -29,6 +29,67 @@ import Testing
     #expect(settings.audioFormatID == kAudioFormatMPEG4AAC)
 }
 
+@Test func outputWriterSettingsMapAudioPresetToAACBitrate() throws {
+    let standard = try RecordingOutputWriterSettings(
+        configuration: resolvedConfiguration(outputFormat: .mp4, videoCodec: .h264, audioPreset: .standard)
+    )
+    let high = try RecordingOutputWriterSettings(
+        configuration: resolvedConfiguration(outputFormat: .mp4, videoCodec: .h264, audioPreset: .high)
+    )
+
+    #expect(standard.audioSampleRate == 48_000)
+    #expect(standard.audioChannelCount == 2)
+    #expect(standard.audioBitrate == 128_000)
+    #expect(high.audioSampleRate == 48_000)
+    #expect(high.audioChannelCount == 2)
+    #expect(high.audioBitrate == 256_000)
+}
+
+@Test func outputWriterSettingsExposeAVFoundationEncoderParameters() throws {
+    let configuration = ResolvedRecordingConfiguration(
+        source: .display(DisplayID(rawValue: 1)),
+        pixelSize: CGSize(width: 2560, height: 1440),
+        outputFormat: .mov,
+        videoCodec: .hevc,
+        bitrate: 25_000_000,
+        frameRate: 60,
+        audioPreset: .high,
+        includeCursor: false,
+        microphoneDeviceID: "StudioMic"
+    )
+
+    let settings = try RecordingOutputWriterSettings(configuration: configuration)
+    let compression = try #require(
+        settings.videoOutputSettings[AVVideoCompressionPropertiesKey] as? [String: Any]
+    )
+
+    #expect(settings.fileType == .mov)
+    #expect(settings.fileExtension == "mov")
+    #expect(settings.videoCodec == .hevc)
+    #expect(settings.videoWidth == 2560)
+    #expect(settings.videoHeight == 1440)
+    #expect(compression[AVVideoAverageBitRateKey] as? Int == 25_000_000)
+    #expect(compression[AVVideoExpectedSourceFrameRateKey] as? Int == 60)
+    #expect(compression[AVVideoAllowFrameReorderingKey] as? Bool == false)
+    #expect(settings.audioOutputSettings[AVFormatIDKey] as? AudioFormatID == kAudioFormatMPEG4AAC)
+    #expect(settings.audioOutputSettings[AVSampleRateKey] as? Int == 48_000)
+    #expect(settings.audioOutputSettings[AVNumberOfChannelsKey] as? Int == 2)
+    #expect(settings.audioOutputSettings[AVEncoderBitRateKey] as? Int == 256_000)
+}
+
+@Test func outputWriterSettingsExposeStableSDRColorMetadata() throws {
+    let settings = try RecordingOutputWriterSettings(
+        configuration: resolvedConfiguration(outputFormat: .mp4, videoCodec: .h264)
+    )
+    let colorProperties = try #require(
+        settings.videoOutputSettings[AVVideoColorPropertiesKey] as? [String: String]
+    )
+
+    #expect(colorProperties[AVVideoColorPrimariesKey] == AVVideoColorPrimaries_ITU_R_709_2)
+    #expect(colorProperties[AVVideoTransferFunctionKey] == AVVideoTransferFunction_ITU_R_709_2)
+    #expect(colorProperties[AVVideoYCbCrMatrixKey] == AVVideoYCbCrMatrix_ITU_R_709_2)
+}
+
 @Test func outputWriterSettingsRejectInvalidPixelSize() {
     let configuration = ResolvedRecordingConfiguration(
         source: .display(DisplayID(rawValue: 1)),
@@ -227,7 +288,8 @@ import Testing
 private func resolvedConfiguration(
     outputFormat: OutputFormat,
     videoCodec: VideoCodec,
-    microphoneDeviceID: String? = nil
+    microphoneDeviceID: String? = nil,
+    audioPreset: AudioPreset = .standard
 ) -> ResolvedRecordingConfiguration {
     ResolvedRecordingConfiguration(
         source: .display(DisplayID(rawValue: 1)),
@@ -236,6 +298,7 @@ private func resolvedConfiguration(
         videoCodec: videoCodec,
         bitrate: 7_464_960,
         frameRate: 30,
+        audioPreset: audioPreset,
         includeCursor: true,
         microphoneDeviceID: microphoneDeviceID
     )

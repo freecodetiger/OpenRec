@@ -1,4 +1,5 @@
 import AVFoundation
+import CoreGraphics
 import CoreMedia
 import Foundation
 import ScreenCaptureKit
@@ -81,6 +82,16 @@ import Testing
     #expect(streamConfiguration.microphoneCapturePolicy == .notRequested)
 }
 
+@Test func screenCaptureKitStreamConfigurationUsesStableSDRColorPipeline() throws {
+    let streamConfiguration = try ScreenCaptureKitStreamConfiguration(
+        configuration: resolvedConfiguration(source: .display(DisplayID(rawValue: 42))),
+        supportsMicrophoneOutput: true
+    )
+
+    #expect(streamConfiguration.pixelFormat == kCVPixelFormatType_32BGRA)
+    #expect(streamConfiguration.colorSpaceName == CGColorSpace.sRGB as String)
+}
+
 @Test func screenCaptureKitFactoryAddsMicrophoneOutputWhenRequestedAndAvailable() throws {
     let streamBuilder = SpyScreenCaptureKitStreamBuilder()
     let factory = ScreenCaptureKitRecordingCaptureSessionFactory(
@@ -104,6 +115,34 @@ import Testing
     #expect(streamBuilder.builtStreams[0].configuration.captureMicrophone == true)
     #expect(streamBuilder.builtStreams[0].configuration.microphoneCapturePolicy == .enabled)
     #expect(streamBuilder.builtStreams[0].stream.addedOutputTypes == [.screen, .microphone])
+}
+
+@Test func recordingEngineDoesNotStartFallbackMicrophoneWhenScreenCaptureKitCapturesMicrophone() throws {
+    let streamBuilder = SpyScreenCaptureKitStreamBuilder()
+    let captureSessionFactory = ScreenCaptureKitRecordingCaptureSessionFactory(
+        shareableContentProvider: StubScreenCaptureKitShareableContentProvider(
+            displays: [ScreenCaptureKitDisplay(id: DisplayID(rawValue: 42))],
+            windows: []
+        ),
+        streamBuilder: streamBuilder,
+        supportsMicrophoneOutput: true
+    )
+    let microphoneSessionFactory = SpyMicrophoneCaptureSessionFactory()
+    let engine = ScreenCaptureRecordingEngine(
+        writerFactory: SpyRecordingOutputWriterFactory(),
+        captureSessionFactory: captureSessionFactory,
+        microphoneCaptureSessionFactory: microphoneSessionFactory
+    )
+
+    _ = try engine.start(
+        configuration: resolvedConfiguration(
+            source: .display(DisplayID(rawValue: 42)),
+            microphoneDeviceID: "BuiltInMic"
+        )
+    )
+
+    #expect(streamBuilder.builtStreams[0].stream.addedOutputTypes == [.screen, .microphone])
+    #expect(microphoneSessionFactory.startedDeviceIDs.isEmpty)
 }
 
 @Test func screenCaptureKitFactoryKeepsVideoOnlyWhenMicrophoneRequestedButUnavailable() throws {
@@ -321,6 +360,31 @@ private final class SpyRecordingOutputWriter: RecordingOutputWriter, @unchecked 
     func finish() throws -> URL {
         outputURL
     }
+}
+
+private struct SpyRecordingOutputWriterFactory: RecordingOutputWriterFactory {
+    func makeWriter(
+        settings: RecordingOutputWriterSettings,
+        outputURL: URL
+    ) throws -> any RecordingOutputWriter {
+        SpyRecordingOutputWriter(outputURL: outputURL)
+    }
+}
+
+private final class SpyMicrophoneCaptureSessionFactory: MicrophoneCaptureSessionFactory, @unchecked Sendable {
+    private(set) var startedDeviceIDs: [String] = []
+
+    func startMicrophoneCapture(
+        deviceID: String,
+        writer: any RecordingOutputWriter
+    ) throws -> any MicrophoneCaptureSession {
+        startedDeviceIDs.append(deviceID)
+        return SpyMicrophoneCaptureSession()
+    }
+}
+
+private final class SpyMicrophoneCaptureSession: MicrophoneCaptureSession, @unchecked Sendable {
+    func stop() throws {}
 }
 
 private struct StubScreenCaptureKitShareableContentProvider: ScreenCaptureKitShareableContentProviding {

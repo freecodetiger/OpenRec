@@ -1,8 +1,16 @@
+import CoreGraphics
+import CoreVideo
 import Foundation
 @preconcurrency import ScreenCaptureKit
 
 public protocol RecordingCaptureSession: AnyObject, Sendable {
+    var capturesMicrophone: Bool { get }
+
     func stop() throws
+}
+
+public extension RecordingCaptureSession {
+    var capturesMicrophone: Bool { false }
 }
 
 public protocol RecordingCaptureSessionFactory: Sendable {
@@ -63,7 +71,8 @@ public struct ScreenCaptureKitRecordingCaptureSessionFactory: RecordingCaptureSe
 
         return ScreenCaptureKitRecordingCaptureSession(
             stream: stream,
-            outputHandler: outputHandler
+            outputHandler: outputHandler,
+            capturesMicrophone: streamConfiguration.captureMicrophone
         )
     }
 
@@ -182,6 +191,8 @@ struct ScreenCaptureKitStreamConfiguration: Equatable, Sendable {
     var capturesAudio: Bool
     var captureMicrophone: Bool
     var microphoneCapturePolicy: ScreenCaptureKitMicrophoneCapturePolicy
+    var pixelFormat: OSType
+    var colorSpaceName: String
 
     init(configuration: ResolvedRecordingConfiguration) throws {
         try self.init(
@@ -219,6 +230,8 @@ struct ScreenCaptureKitStreamConfiguration: Equatable, Sendable {
         self.showsCursor = configuration.includeCursor
         self.capturesAudio = false
         self.captureMicrophone = configuration.microphoneDeviceID != nil && supportsMicrophoneOutput
+        self.pixelFormat = kCVPixelFormatType_32BGRA
+        self.colorSpaceName = CGColorSpace.sRGB as String
         self.microphoneCapturePolicy = if configuration.microphoneDeviceID == nil {
             .notRequested
         } else if supportsMicrophoneOutput {
@@ -243,6 +256,8 @@ struct ScreenCaptureKitStreamConfiguration: Equatable, Sendable {
         configuration.minimumFrameInterval = minimumFrameInterval
         configuration.showsCursor = showsCursor
         configuration.capturesAudio = capturesAudio
+        configuration.pixelFormat = pixelFormat
+        configuration.colorSpaceName = CGColorSpace.sRGB
         if #available(macOS 15.0, *) {
             configuration.captureMicrophone = captureMicrophone
         }
@@ -490,10 +505,16 @@ private extension CMSampleBuffer {
 final class ScreenCaptureKitRecordingCaptureSession: RecordingCaptureSession, @unchecked Sendable {
     private let stream: any ScreenCaptureKitStream
     private let outputHandler: ScreenCaptureKitStreamOutputHandler
+    let capturesMicrophone: Bool
 
-    init(stream: any ScreenCaptureKitStream, outputHandler: ScreenCaptureKitStreamOutputHandler) {
+    init(
+        stream: any ScreenCaptureKitStream,
+        outputHandler: ScreenCaptureKitStreamOutputHandler,
+        capturesMicrophone: Bool
+    ) {
         self.stream = stream
         self.outputHandler = outputHandler
+        self.capturesMicrophone = capturesMicrophone
     }
 
     func stop() throws {

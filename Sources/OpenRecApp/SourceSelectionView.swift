@@ -7,6 +7,10 @@ struct SourceSelectionView: View {
     @State private var draft: SourceSelectionDraft
     @State private var overlayPresenter = WindowSelectionOverlayPresenter()
 
+    private var strings: OpenRecLocalization {
+        OpenRecLocalization(viewModel.snapshot.appLanguage)
+    }
+
     init(viewModel: AppShellViewModel) {
         self.viewModel = viewModel
         _draft = State(initialValue: SourceSelectionDraft(snapshot: viewModel.snapshot))
@@ -14,10 +18,10 @@ struct SourceSelectionView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            Label("Source Selection", systemImage: "rectangle.dashed")
+            Label(strings.sourceSelectionTitle, systemImage: "rectangle.dashed")
                 .font(.title2.weight(.semibold))
 
-            Text("Choose the display or window OpenRec should record.")
+            Text(strings.chooseSourceDetail)
                 .foregroundStyle(.secondary)
 
             modePicker
@@ -49,12 +53,12 @@ struct SourceSelectionView: View {
     }
 
     private var modePicker: some View {
-        Picker("Mode", selection: Binding(
+        Picker(strings.mode, selection: Binding(
             get: { draft.mode },
             set: { draft.selectMode($0) }
         )) {
-            Text("Display Recording").tag(CaptureMode.display)
-            Text("Window Recording").tag(CaptureMode.window)
+            Text(strings.displayRecording).tag(CaptureMode.display)
+            Text(strings.windowRecordingMode).tag(CaptureMode.window)
         }
         .pickerStyle(.segmented)
     }
@@ -63,7 +67,7 @@ struct SourceSelectionView: View {
         Button {
             openWindowSelectionOverlay()
         } label: {
-            Label("Select Window on Screen", systemImage: "macwindow.badge.plus")
+            Label(strings.selectWindowOnScreen, systemImage: "macwindow.badge.plus")
                 .frame(maxWidth: .infinity)
         }
         .buttonStyle(.borderedProminent)
@@ -103,14 +107,14 @@ struct SourceSelectionView: View {
 
     private var actions: some View {
         HStack {
-            Button("Cancel") {
+            Button(strings.cancel) {
                 dismiss()
             }
             .keyboardShortcut(.cancelAction)
 
             Spacer()
 
-            Button("Use Selected Source") {
+            Button(strings.useSelectedSource) {
                 viewModel.applySourceSelection(draft)
                 dismiss()
             }

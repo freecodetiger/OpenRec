@@ -14,6 +14,7 @@ protocol AppShellAdapter: AnyObject {
     func selectTarget(id: String) -> AppShellSnapshot
     func selectMicrophone(id: String) -> AppShellSnapshot
     func updateSettings(_ settings: RecordingSettings) -> AppShellSnapshot
+    func updateAppLanguage(_ language: AppLanguage) -> AppShellSnapshot
     func openPermissionSettings(for kind: PermissionKind) -> AppShellSnapshot
     func requestPermission(for kind: PermissionKind) async -> AppShellSnapshot
     func reopenApplication()
@@ -28,6 +29,7 @@ protocol AppShellAdapter: AnyObject {
 final class AppShellViewModel: ObservableObject {
     @Published private(set) var snapshot: AppShellSnapshot
     @Published private(set) var windowRecordingWorkflow: WindowRecordingWorkflowState = .idle
+    var onRecordingStoppedBeforeSave: (() -> Void)?
 
     private let adapter: AppShellAdapter
     private let now: () -> Date
@@ -63,7 +65,8 @@ final class AppShellViewModel: ObservableObject {
     }
 
     var primaryActionTitle: String {
-        isRecording ? "Stop Recording" : "Start Recording"
+        let strings = OpenRecLocalization(snapshot.appLanguage)
+        return isRecording ? strings.stopRecording : strings.startFullScreenRecording
     }
 
     var menuBarSymbolName: String {
@@ -102,7 +105,7 @@ final class AppShellViewModel: ObservableObject {
 
     @MainActor
     func refresh() async {
-        snapshot = await adapter.refresh()
+        snapshot = snapshotWithCurrentElapsed(await adapter.refresh())
     }
 
     func startRecording() {
@@ -119,14 +122,14 @@ final class AppShellViewModel: ObservableObject {
         snapshot = adapter.stopRecording()
         recordingStartedAt = nil
         if snapshot.status == .awaitingSave {
+            onRecordingStoppedBeforeSave?()
             snapshot = adapter.saveRecording()
         }
     }
 
     func refreshElapsedTime() {
         guard snapshot.status == .recording, let recordingStartedAt else { return }
-        let elapsedSeconds = max(0, Int(now().timeIntervalSince(recordingStartedAt)))
-        snapshot.elapsedTimeText = Self.formatElapsedTime(seconds: elapsedSeconds)
+        snapshot.elapsedTimeText = currentElapsedTimeText(since: recordingStartedAt)
     }
 
     func toggleRecording() {
@@ -272,6 +275,11 @@ final class AppShellViewModel: ObservableObject {
         snapshot = adapter.updateSettings(settings)
     }
 
+    func updateAppLanguage(_ language: AppLanguage) {
+        guard language != snapshot.appLanguage else { return }
+        snapshot = adapter.updateAppLanguage(language)
+    }
+
     func updateWindowControlBarSettings(_ settings: RecordingSettings) {
         let configuredTargetID: String?
         if case let .configuringWindow(_, _, selectedTargetID) = windowRecordingWorkflow {
@@ -305,7 +313,7 @@ final class AppShellViewModel: ObservableObject {
 
     func refreshPermissions() {
         Task {
-            snapshot = await adapter.refresh()
+            snapshot = snapshotWithCurrentElapsed(await adapter.refresh())
         }
     }
 
@@ -332,5 +340,21 @@ final class AppShellViewModel: ObservableObject {
         let minutes = seconds / 60
         let seconds = seconds % 60
         return String(format: "%02d:%02d", minutes, seconds)
+    }
+
+    private func snapshotWithCurrentElapsed(_ snapshot: AppShellSnapshot) -> AppShellSnapshot {
+        guard snapshot.status == .recording,
+              let recordingStartedAt else {
+            return snapshot
+        }
+
+        var snapshot = snapshot
+        snapshot.elapsedTimeText = currentElapsedTimeText(since: recordingStartedAt)
+        return snapshot
+    }
+
+    private func currentElapsedTimeText(since startDate: Date) -> String {
+        let elapsedSeconds = max(0, Int(now().timeIntervalSince(startDate)))
+        return Self.formatElapsedTime(seconds: elapsedSeconds)
     }
 }

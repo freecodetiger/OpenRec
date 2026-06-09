@@ -49,6 +49,47 @@ import Testing
     }
 }
 
+@Test func resolverCarriesEveryRecordingSettingIntoResolvedConfiguration() throws {
+    let source = CaptureSource.display(DisplayID(rawValue: 9))
+    let metadata = CaptureSourceMetadata(
+        source: source,
+        pixelSize: CGSize(width: 2560, height: 1440),
+        isAvailable: true
+    )
+    let settings = RecordingSettings(
+        defaultMode: .display,
+        outputFormat: .mov,
+        videoCodec: .hevc,
+        qualityPreset: .high,
+        frameRate: .fps60,
+        includeCursor: false,
+        microphoneDeviceID: "StudioMic",
+        audioPreset: .high,
+        globalHotkey: Hotkey(keyCode: 15, modifiers: [.command, .shift])
+    )
+
+    let config = try ConfigurationResolver.resolve(
+        source: source,
+        metadata: metadata,
+        settings: settings
+    )
+
+    #expect(config.source == source)
+    #expect(config.pixelSize == metadata.pixelSize)
+    #expect(config.outputFormat == .mov)
+    #expect(config.videoCodec == .hevc)
+    #expect(config.frameRate == 60)
+    #expect(config.audioPreset == .high)
+    #expect(config.includeCursor == false)
+    #expect(config.microphoneDeviceID == "StudioMic")
+    #expect(config.bitrate == ConfigurationResolver.videoBitrate(
+        pixelSize: metadata.pixelSize,
+        frameRate: .fps60,
+        qualityPreset: .high,
+        codec: .hevc
+    ))
+}
+
 @Test func resolverDerivesBitrateFromSizeFrameRateQualityAndCodec() throws {
     let source = CaptureSource.display(DisplayID(rawValue: 8))
     let metadata = CaptureSourceMetadata(

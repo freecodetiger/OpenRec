@@ -14,7 +14,9 @@ struct MenuBarPresentationModel: Equatable {
     var isPrimaryActionEnabled: Bool
 
     static func make(snapshot: AppShellSnapshot, isRecording: Bool, canStartRecording: Bool) -> MenuBarPresentationModel {
-        switch snapshot.status {
+        let strings = OpenRecLocalization(snapshot.appLanguage)
+
+        return switch snapshot.status {
         case .ready:
             MenuBarPresentationModel(
                 showsSourceActions: true,
@@ -23,7 +25,7 @@ struct MenuBarPresentationModel: Equatable {
                 showsPermissionActions: false,
                 showsSaveActions: false,
                 showsPreferences: true,
-                primaryActionTitle: "Start Full Screen Recording",
+                primaryActionTitle: strings.startFullScreenRecording,
                 primaryActionSymbolName: "record.circle",
                 isPrimaryActionEnabled: canStartRecording
             )
@@ -35,7 +37,7 @@ struct MenuBarPresentationModel: Equatable {
                 showsPermissionActions: false,
                 showsSaveActions: false,
                 showsPreferences: false,
-                primaryActionTitle: "Stop Recording",
+                primaryActionTitle: strings.stopRecording,
                 primaryActionSymbolName: "stop.fill",
                 isPrimaryActionEnabled: isRecording
             )
@@ -47,7 +49,7 @@ struct MenuBarPresentationModel: Equatable {
                 showsPermissionActions: true,
                 showsSaveActions: false,
                 showsPreferences: true,
-                primaryActionTitle: "Start Full Screen Recording",
+                primaryActionTitle: strings.startFullScreenRecording,
                 primaryActionSymbolName: "record.circle",
                 isPrimaryActionEnabled: false
             )
@@ -59,7 +61,7 @@ struct MenuBarPresentationModel: Equatable {
                 showsPermissionActions: false,
                 showsSaveActions: true,
                 showsPreferences: false,
-                primaryActionTitle: "Save Again",
+                primaryActionTitle: strings.saveAgain,
                 primaryActionSymbolName: "square.and.arrow.down",
                 isPrimaryActionEnabled: true
             )
@@ -71,7 +73,7 @@ struct MenuBarPresentationModel: Equatable {
                 showsPermissionActions: false,
                 showsSaveActions: false,
                 showsPreferences: true,
-                primaryActionTitle: "Start Full Screen Recording",
+                primaryActionTitle: strings.startFullScreenRecording,
                 primaryActionSymbolName: "record.circle",
                 isPrimaryActionEnabled: false
             )
@@ -86,6 +88,7 @@ struct MenuBarPopoverView: View {
     var onCloseMenu: () -> Void = {}
 
     @Environment(\.openWindow) private var openWindow
+    private let windowPresenter = UserWindowPresenter()
     private let elapsedTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
     private var presentation: MenuBarPresentationModel {
         MenuBarPresentationModel.make(
@@ -94,10 +97,13 @@ struct MenuBarPopoverView: View {
             canStartRecording: viewModel.canStartRecording
         )
     }
+    private var strings: OpenRecLocalization {
+        OpenRecLocalization(viewModel.snapshot.appLanguage)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            StatusHeader(snapshot: viewModel.snapshot)
+            StatusHeader(snapshot: viewModel.snapshot, strings: strings)
 
             Divider()
 
@@ -149,6 +155,7 @@ struct MenuBarPopoverView: View {
 
     private var primaryRecordingAction: some View {
         Button {
+            onCloseMenu()
             viewModel.stopRecording()
         } label: {
             Label(presentation.primaryActionTitle, systemImage: presentation.primaryActionSymbolName)
@@ -160,7 +167,7 @@ struct MenuBarPopoverView: View {
 
     private var sourceActions: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Record another source")
+            Text(strings.recordAnotherSource)
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
@@ -169,7 +176,7 @@ struct MenuBarPopoverView: View {
                     onCloseMenu()
                     onRequestWindowRecordingWorkflow()
                 } label: {
-                    sourceActionLabel("Window...", systemImage: "macwindow")
+                    sourceActionLabel(strings.windowRecording, systemImage: "macwindow")
                 }
                 .buttonStyle(.bordered)
 
@@ -177,7 +184,7 @@ struct MenuBarPopoverView: View {
                     onCloseMenu()
                     onRequestApplicationRecordingWorkflow()
                 } label: {
-                    sourceActionLabel("Application...", systemImage: "square.stack.3d.up")
+                    sourceActionLabel(strings.applicationRecording, systemImage: "square.stack.3d.up")
                 }
                 .buttonStyle(.bordered)
             }
@@ -198,12 +205,12 @@ struct MenuBarPopoverView: View {
 
     private var microphonePicker: some View {
         HStack(spacing: 10) {
-            Label("Microphone", systemImage: "mic")
+            Label(strings.microphone, systemImage: "mic")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .frame(width: 92, alignment: .leading)
 
-            Picker("Microphone", selection: Binding(
+            Picker(strings.microphone, selection: Binding(
                 get: { viewModel.snapshot.selectedMicrophoneID },
                 set: { viewModel.selectMicrophone(id: $0) }
             )) {
@@ -229,8 +236,12 @@ struct MenuBarPopoverView: View {
     }
 
     private var settingsSummaryText: String {
-        let settings = viewModel.snapshot.settings
-        return "\(settings.qualityPreset.label) · \(settings.frameRate.label) · \(settings.videoCodec.label)"
+        let summary = RecordingParameterSummary.make(
+            target: viewModel.snapshot.selectedTarget,
+            settings: viewModel.snapshot.settings,
+            strings: strings
+        )
+        return "\(summary.bitrateText) · \(summary.videoDetailText) · \(summary.audioDetailText)"
     }
 
     private var recordingSummary: some View {
@@ -251,7 +262,7 @@ struct MenuBarPopoverView: View {
             Button {
                 viewModel.saveRecording()
             } label: {
-                Label("Save Again", systemImage: "square.and.arrow.down")
+                Label(strings.saveAgain, systemImage: "square.and.arrow.down")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
@@ -260,7 +271,7 @@ struct MenuBarPopoverView: View {
             Button(role: .destructive) {
                 viewModel.discardRecording()
             } label: {
-                Label("Discard Recording", systemImage: "trash")
+                Label(strings.discardRecording, systemImage: "trash")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
@@ -274,7 +285,7 @@ struct MenuBarPopoverView: View {
                 await viewModel.refresh()
             }
         } label: {
-            Label("Re-check", systemImage: "arrow.clockwise")
+            Label(strings.recheck, systemImage: "arrow.clockwise")
                 .frame(maxWidth: .infinity)
         }
         .buttonStyle(.bordered)
@@ -287,12 +298,12 @@ struct MenuBarPopoverView: View {
                 ForEach(PermissionDisplayItem.items(for: viewModel.snapshot), id: \.kind) { item in
                     if item.isRequired {
                         VStack(alignment: .leading, spacing: 2) {
-                            Label(item.statusText, systemImage: "exclamationmark.triangle")
+                            Label(strings.permissionStatusText(item), systemImage: "exclamationmark.triangle")
                             if item.kind == .screenRecording {
                                 Button {
                                     viewModel.reopenApplication()
                                 } label: {
-                                    Label("Reopen OpenRec", systemImage: "arrow.clockwise.circle")
+                                    Label(strings.reopenOpenRec, systemImage: "arrow.clockwise.circle")
                                 }
                                 .buttonStyle(.borderless)
                             }
@@ -314,13 +325,13 @@ struct MenuBarPopoverView: View {
                         for: viewModel.snapshot.requiredPermissions.first ?? .screenRecording
                     )
                 } label: {
-                    Label("Open System Settings", systemImage: "gearshape")
+                    Label(strings.openSystemSettings, systemImage: "gearshape")
                 }
 
                 Button {
                     viewModel.refreshPermissions()
                 } label: {
-                    Label("Re-check", systemImage: "arrow.clockwise")
+                    Label(strings.recheck, systemImage: "arrow.clockwise")
                 }
             }
             .buttonStyle(.borderless)
@@ -331,9 +342,11 @@ struct MenuBarPopoverView: View {
         HStack {
             if presentation.showsPreferences {
                 Button {
-                    openWindow(id: "preferences")
+                    windowPresenter.present {
+                        openWindow(id: "preferences")
+                    }
                 } label: {
-                    Label("Preferences", systemImage: "gearshape")
+                    Label(strings.preferencesTitle, systemImage: "gearshape")
                 }
             }
 
@@ -342,7 +355,7 @@ struct MenuBarPopoverView: View {
             Button {
                 NSApplication.shared.terminate(nil)
             } label: {
-                Label("Quit", systemImage: "power")
+                Label(strings.quit, systemImage: "power")
             }
         }
         .buttonStyle(.borderless)
@@ -351,6 +364,7 @@ struct MenuBarPopoverView: View {
 
 private struct StatusHeader: View {
     var snapshot: AppShellSnapshot
+    var strings: OpenRecLocalization
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -361,7 +375,7 @@ private struct StatusHeader: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
-                    Text(snapshot.status.title)
+                    Text(strings.statusTitle(snapshot.status))
                         .font(.headline)
                     Spacer()
                     if let elapsedTimeText = snapshot.elapsedTimeText {
@@ -371,7 +385,7 @@ private struct StatusHeader: View {
                     }
                 }
 
-                Text(snapshot.errorMessage ?? snapshot.status.detail)
+                Text(snapshot.errorMessage ?? strings.statusDetail(snapshot.status))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

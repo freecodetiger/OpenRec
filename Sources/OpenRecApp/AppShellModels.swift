@@ -97,6 +97,7 @@ struct AppShellSnapshot: Equatable, Sendable {
     var errorMessage: String?
     var elapsedTimeText: String?
     var pendingSaveURL: URL?
+    var appLanguage: AppLanguage
 
     var selectedMicrophone: MicrophoneOption {
         microphones.first { $0.id == selectedMicrophoneID } ?? microphones[0]
@@ -191,7 +192,8 @@ extension AppShellSnapshot {
         requiredPermissions: [],
         errorMessage: nil,
         elapsedTimeText: nil,
-        pendingSaveURL: nil
+        pendingSaveURL: nil,
+        appLanguage: .english
     )
 
     static let recording = AppShellSnapshot(
@@ -206,7 +208,8 @@ extension AppShellSnapshot {
         requiredPermissions: [],
         errorMessage: nil,
         elapsedTimeText: "00:12",
-        pendingSaveURL: nil
+        pendingSaveURL: nil,
+        appLanguage: .english
     )
 
     static let awaitingSave = AppShellSnapshot(
@@ -221,7 +224,8 @@ extension AppShellSnapshot {
         requiredPermissions: [],
         errorMessage: nil,
         elapsedTimeText: nil,
-        pendingSaveURL: URL(filePath: "/tmp/openrec-finalized.mp4")
+        pendingSaveURL: URL(filePath: "/tmp/openrec-finalized.mp4"),
+        appLanguage: .english
     )
 
     static let permissionRequired = AppShellSnapshot(
@@ -241,7 +245,8 @@ extension AppShellSnapshot {
         requiredPermissions: [.screenRecording, .microphone],
         errorMessage: nil,
         elapsedTimeText: nil,
-        pendingSaveURL: nil
+        pendingSaveURL: nil,
+        appLanguage: .english
     )
 
     static let error = AppShellSnapshot(
@@ -256,7 +261,8 @@ extension AppShellSnapshot {
         requiredPermissions: [],
         errorMessage: "The selected window is no longer available.",
         elapsedTimeText: nil,
-        pendingSaveURL: nil
+        pendingSaveURL: nil,
+        appLanguage: .english
     )
 
     static let mockScenarios: [AppShellSnapshot] = [

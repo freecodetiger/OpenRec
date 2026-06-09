@@ -61,10 +61,86 @@ import Foundation
         canStartRecording: false
     )
 
-    #expect(presentation.primaryActionTitle == "Save Again")
+    #expect(presentation.primaryActionTitle == "Save Recording")
     #expect(presentation.showsSaveActions == true)
     #expect(presentation.showsSourceActions == false)
     #expect(presentation.showsPreferences == false)
+}
+
+@Test func menuPresentationUsesSelectedAppLanguage() {
+    var snapshot = AppShellSnapshot.ready
+    snapshot.appLanguage = .simplifiedChinese
+
+    let presentation = MenuBarPresentationModel.make(
+        snapshot: snapshot,
+        isRecording: false,
+        canStartRecording: true
+    )
+
+    #expect(presentation.primaryActionTitle == "开始全屏录制")
+}
+
+@Test func localizationProvidesChineseLabelsForSharedRecordingControls() {
+    let strings = OpenRecLocalization(.simplifiedChinese)
+
+    #expect(strings.preferencesTitle == "偏好设置")
+    #expect(strings.quality == "视频码率")
+    #expect(strings.qualityLabel(.high) == "高细节")
+    #expect(strings.audioPresetLabel(.standard) == "标准")
+    #expect(strings.permissionStatus(.granted) == "已授权")
+}
+
+@Test func recordingParameterSummaryShowsCurrentBitrateAndParameters() {
+    var settings = RecordingSettings.defaults
+    settings.videoCodec = .hevc
+    settings.frameRate = .fps60
+    settings.qualityPreset = .high
+    settings.outputFormat = .mov
+    settings.audioPreset = .high
+    let target = SourceTargetOption(
+        id: "display-1",
+        mode: .display,
+        source: .display(DisplayID(rawValue: 1)),
+        title: "Studio Display",
+        subtitle: "5120 x 2880, original resolution"
+    )
+
+    let summary = RecordingParameterSummary.make(
+        target: target,
+        settings: settings,
+        strings: OpenRecLocalization(.english)
+    )
+
+    #expect(summary.bitrateText == "103.5 Mbps")
+    #expect(summary.videoDetailText == "5120 x 2880, 60 fps, HEVC/H.265, MOV")
+    #expect(summary.audioDetailText == "AAC-LC, 48 kHz, 2 ch, 256 kbps, High")
+}
+
+@MainActor
+@Test func userWindowPresenterActivatesApplicationBeforeOpeningWindow() {
+    let foregroundActivator = SpyForegroundActivator()
+    let presenter = UserWindowPresenter(foregroundActivator: foregroundActivator)
+    var events: [String] = []
+    foregroundActivator.onActivate = {
+        events.append("activate")
+    }
+
+    presenter.present {
+        events.append("open")
+    }
+
+    #expect(events == ["activate", "open"])
+    #expect(foregroundActivator.activateCallCount == 1)
+}
+
+@MainActor
+@Test func userWindowPresenterCanActivateApplicationForModalPanel() {
+    let foregroundActivator = SpyForegroundActivator()
+    let presenter = UserWindowPresenter(foregroundActivator: foregroundActivator)
+
+    presenter.activateApplication()
+
+    #expect(foregroundActivator.activateCallCount == 1)
 }
 
 @MainActor
@@ -77,7 +153,7 @@ import Foundation
     viewModel.stopRecording()
 
     #expect(viewModel.snapshot.status == .ready)
-    #expect(viewModel.primaryActionTitle == "Start Recording")
+    #expect(viewModel.primaryActionTitle == "Start Full Screen Recording")
 }
 
 @MainActor
@@ -137,6 +213,20 @@ import Foundation
 }
 
 @MainActor
+@Test func viewModelRefreshKeepsCurrentElapsedTimeWhileRecording() async {
+    var now = Date(timeIntervalSinceReferenceDate: 1_000)
+    let adapter = MockAppCoreAdapter(initialSnapshot: .ready)
+    let viewModel = AppShellViewModel(adapter: adapter, now: { now })
+
+    viewModel.startRecording()
+    now = Date(timeIntervalSinceReferenceDate: 1_125)
+    await viewModel.refresh()
+
+    #expect(viewModel.snapshot.status == .recording)
+    #expect(viewModel.snapshot.elapsedTimeText == "02:05")
+}
+
+@MainActor
 @Test func viewModelPromptsForSaveAfterStoppingRecording() {
     let adapter = MockAppCoreAdapter(initialSnapshot: .recording)
     var awaitingSaveSnapshot = AppShellSnapshot.awaitingSave
@@ -149,6 +239,26 @@ import Foundation
     #expect(adapter.stopRecordingCallCount == 1)
     #expect(adapter.saveRecordingCallCount == 1)
     #expect(viewModel.snapshot.status == .ready)
+}
+
+@MainActor
+@Test func viewModelRunsBeforeSaveHookAfterStopAndBeforeSavePanel() {
+    let adapter = MockAppCoreAdapter(initialSnapshot: .recording)
+    var awaitingSaveSnapshot = AppShellSnapshot.awaitingSave
+    awaitingSaveSnapshot.pendingSaveURL = URL(filePath: "/tmp/openrec-finished.mp4")
+    adapter.stopRecordingSnapshot = awaitingSaveSnapshot
+    var events: [String] = []
+    adapter.onSaveRecording = {
+        events.append("save")
+    }
+    let viewModel = AppShellViewModel(adapter: adapter)
+    viewModel.onRecordingStoppedBeforeSave = {
+        events.append("cleanup")
+    }
+
+    viewModel.stopRecording()
+
+    #expect(events == ["cleanup", "save"])
 }
 
 @MainActor
@@ -1431,6 +1541,25 @@ private func awaitingSaveAdapter(
 }
 
 @MainActor
+@Test func viewModelPersistsAppLanguagePreferenceSeparatelyFromRecordingSettings() async throws {
+    let settingsDirectory = temporarySettingsDirectory()
+    let settingsStore = SettingsStore(settingsDirectory: settingsDirectory)
+    let adapter = editablePreferencesAdapter(settingsStore: settingsStore)
+    let viewModel = AppShellViewModel(adapter: adapter)
+
+    await viewModel.refresh()
+    viewModel.updateAppLanguage(.simplifiedChinese)
+    var settings = viewModel.snapshot.settings
+    settings.frameRate = .fps60
+    viewModel.updateSettings(settings)
+
+    let persistedSettings = try settingsStore.load()
+    #expect(viewModel.snapshot.appLanguage == .simplifiedChinese)
+    #expect(persistedSettings.appLanguage == .simplifiedChinese)
+    #expect(persistedSettings.recording.frameRate == .fps60)
+}
+
+@MainActor
 @Test func viewModelAlwaysKeepsDisplayAsDefaultRecordingSource() async throws {
     let settingsDirectory = temporarySettingsDirectory()
     let settingsStore = SettingsStore(settingsDirectory: settingsDirectory)
@@ -1529,6 +1658,24 @@ private func awaitingSaveAdapter(
 
     #expect(viewModel.snapshot.selectedTarget.source == .display(DisplayID(rawValue: 2)))
     #expect(viewModel.snapshot.selectedTarget.title == "External Display")
+}
+
+@MainActor
+@Test func launchRefreshUpdatesSnapshotAndMenuBarSymbolBeforePopoverOpens() async {
+    let adapter = MockAppCoreAdapter(initialSnapshot: .error)
+    adapter.permissionRefreshSnapshot = .ready
+    let viewModel = AppShellViewModel(adapter: adapter)
+    let symbolRefresher = SpyStatusSymbolRefresher()
+    let launchRefresher = AppLaunchRefresher(
+        viewModel: viewModel,
+        statusSymbolRefresher: symbolRefresher
+    )
+
+    await launchRefresher.refreshAfterLaunch()
+
+    #expect(adapter.refreshCallCount == 1)
+    #expect(viewModel.snapshot.status == .ready)
+    #expect(symbolRefresher.refreshCallCount == 1)
 }
 
 @MainActor
@@ -1657,6 +1804,26 @@ private final class SpyRecordingFileMover: RecordingFileMoving {
 }
 
 private struct TestSaveMoveError: Error {}
+
+@MainActor
+private final class SpyStatusSymbolRefresher: StatusSymbolRefreshing {
+    private(set) var refreshCallCount = 0
+
+    func refreshSymbol() {
+        refreshCallCount += 1
+    }
+}
+
+@MainActor
+private final class SpyForegroundActivator: ForegroundActivating {
+    private(set) var activateCallCount = 0
+    var onActivate: () -> Void = {}
+
+    func activateIgnoringOtherApps() {
+        activateCallCount += 1
+        onActivate()
+    }
+}
 
 private struct FailingCaptureSourceProvider: CaptureSourceProvider {
     func displays() async throws -> [DisplaySourceMetadata] {

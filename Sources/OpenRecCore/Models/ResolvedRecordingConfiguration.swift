@@ -7,6 +7,7 @@ public struct ResolvedRecordingConfiguration: Equatable, Sendable {
     public var videoCodec: VideoCodec
     public var bitrate: Int
     public var frameRate: Int
+    public var audioPreset: AudioPreset
     public var includeCursor: Bool
     public var microphoneDeviceID: String?
 
@@ -17,6 +18,7 @@ public struct ResolvedRecordingConfiguration: Equatable, Sendable {
         videoCodec: VideoCodec,
         bitrate: Int,
         frameRate: Int,
+        audioPreset: AudioPreset = .standard,
         includeCursor: Bool,
         microphoneDeviceID: String?
     ) {
@@ -26,6 +28,7 @@ public struct ResolvedRecordingConfiguration: Equatable, Sendable {
         self.videoCodec = videoCodec
         self.bitrate = bitrate
         self.frameRate = frameRate
+        self.audioPreset = audioPreset
         self.includeCursor = includeCursor
         self.microphoneDeviceID = microphoneDeviceID
     }
@@ -41,6 +44,7 @@ public struct ResolvedRecordingConfiguration: Equatable, Sendable {
             lhs.videoCodec == rhs.videoCodec &&
             lhs.bitrate == rhs.bitrate &&
             lhs.frameRate == rhs.frameRate &&
+            lhs.audioPreset == rhs.audioPreset &&
             lhs.includeCursor == rhs.includeCursor &&
             lhs.microphoneDeviceID == rhs.microphoneDeviceID
     }
