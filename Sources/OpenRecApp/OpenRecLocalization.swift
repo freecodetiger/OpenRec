@@ -23,7 +23,7 @@ struct OpenRecLocalization: Equatable {
     var permissionsTitle: String { text("Permissions", "权限") }
     var sourceSelectionTitle: String { text("Source Selection", "选择来源") }
     var saveRecordingTitle: String { text("Save Recording", "保存录制") }
-    var chooseApplicationTitle: String { text("Choose Application", "选择应用") }
+    var chooseApplicationTitle: String { text("Choose App Window", "选择应用窗口") }
     var showSystemCursor: String { text("Show system cursor", "显示系统指针") }
     var format: String { text("Format", "格式") }
     var codec: String { text("Codec", "编码") }
@@ -47,14 +47,13 @@ struct OpenRecLocalization: Equatable {
     var saveAgain: String { text("Save Recording", "保存录制") }
     var discardRecording: String { text("Discard Recording", "丢弃录制") }
     var saveAs: String { text("Save As...", "另存为...") }
-    var retrySave: String { text("Retry Save", "重试保存") }
     var discard: String { text("Discard", "丢弃") }
     var windowRecording: String { text("Record Window", "录制窗口") }
-    var applicationRecording: String { text("Record Application", "录制应用") }
+    var applicationRecording: String { text("Record App Window", "录制应用窗口") }
     var recordAnotherSource: String { text("Other recording modes", "其他录制模式") }
     var startFullScreenRecording: String { text("Start Full Screen Recording", "开始全屏录制") }
     var stopRecording: String { text("Stop Recording", "停止录制") }
-    var chooseSourceDetail: String { text("Choose the display or window OpenRec should record.", "选择 OpenRec 要录制的显示器或窗口。") }
+    var chooseSourceDetail: String { text("Choose the specific display or window OpenRec should record. Full-screen recording captures one selected display.", "选择 OpenRec 要录制的具体显示器或窗口。全屏录制会录制一个选定的显示器。") }
     var displayRecording: String { text("Display Recording", "显示器录制") }
     var windowRecordingMode: String { text("Window Recording", "窗口录制") }
     var mode: String { text("Mode", "模式") }
@@ -70,8 +69,8 @@ struct OpenRecLocalization: Equatable {
     var configured: String { text("Configured", "已配置") }
     var noRecordableWindowsTitle: String { text("No Recordable Windows", "没有可录制窗口") }
     var noRecordableWindowsDetail: String { text("Open a window and try Window Recording again.", "打开一个窗口后再尝试窗口录制。") }
-    var noRecordableApplicationsTitle: String { text("No Recordable Applications", "没有可录制应用") }
-    var noRecordableApplicationsDetail: String { text("Open an application window and try Application Recording again.", "打开一个应用窗口后再尝试应用录制。") }
+    var noRecordableApplicationsTitle: String { text("No Recordable App Windows", "没有可录制应用窗口") }
+    var noRecordableApplicationsDetail: String { text("Open an application window and try App Window Recording again.", "打开一个应用窗口后再尝试应用窗口录制。") }
     var noSourceSelected: String { text("No Source Selected", "未选择来源") }
     var chooseAvailableSource: String { text("Choose an available display or window.", "选择一个可用的显示器或窗口。") }
     var settingsLoadFailure: String { text("OpenRec could not load local settings.", "OpenRec 无法加载本地设置。") }
@@ -80,7 +79,7 @@ struct OpenRecLocalization: Equatable {
     var sourceUnavailable: String { text("The selected source is no longer available.", "所选来源不再可用。") }
     var microphoneUnavailable: String { text("No microphone input is available.", "没有可用的麦克风输入。") }
     var hotkeyConflict: String { text("That global shortcut is already in use.", "该全局快捷键已被占用。") }
-    var chooseSaveLocationOrDiscard: String { text("Choose a save location or discard the recording.", "请选择保存位置或丢弃录制。") }
+    var saveCancelled: String { text("Save was cancelled.", "已取消保存。") }
     var systemDefault: String { text("System Default", "系统默认") }
     var systemDefaultInputDevice: String { text("System default input device", "系统默认输入设备") }
     var inputDevice: String { text("Input device", "输入设备") }
@@ -119,7 +118,7 @@ struct OpenRecLocalization: Equatable {
         case .recording:
             return text("Capture is running with the selected settings.", "正在使用所选设置录制。")
         case .awaitingSave:
-            return text("Save, retry, or discard the finished recording.", "保存、重试或丢弃已完成的录制。")
+            return text("Save or discard the finished recording.", "保存或丢弃已完成的录制。")
         case .permissionRequired:
             return text("OpenRec needs macOS permissions before recording.", "OpenRec 需要 macOS 权限后才能录制。")
         case .error:

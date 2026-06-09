@@ -60,7 +60,7 @@ These checks require real macOS hardware because ScreenCaptureKit, permissions, 
 
 ## Window Recording Visual Workflow
 
-- [ ] Open OpenRec from the menu bar and verify the source actions show Full Screen, Window, and Application as peer options.
+- [ ] Open OpenRec from the menu bar and verify the source actions show Full Screen, Window, and App Window as peer options.
 - [ ] Click Window.
 - [ ] Verify the menu popover closes and the full-screen window selection overlay appears.
 - [ ] Hover several windows and verify highlight follows the real window bounds.
@@ -72,12 +72,13 @@ These checks require real macOS hardware because ScreenCaptureKit, permissions, 
 - [ ] Cancel the save location prompt and verify the recording is discarded and OpenRec returns to Ready.
 - [ ] Cancel from selection and from the control bar, verifying the previous source is restored.
 
-## Application Recording Visual Workflow
+## App Window Recording Visual Workflow
 
-- [ ] Open OpenRec from the menu bar and click Application.
-- [ ] Verify the application chooser opens with applications grouped by their visible windows.
+- [ ] Open OpenRec from the menu bar and click App Window.
+- [ ] Verify the app-window chooser opens with applications grouped by their visible windows.
 - [ ] Choose an application and verify window selection shows only windows from that application.
 - [ ] Choose a window and verify the same preset control bar appears inside the selected window.
+- [ ] Verify the selected recording target is the chosen window, not every window owned by the application.
 - [ ] Press Start and verify the bar disappears before recording starts.
 - [ ] Relaunch OpenRec and verify it starts with Full Screen as the default source.
 
@@ -123,15 +124,15 @@ Test at least one display recording and one window recording across the supporte
 - [ ] Unsupported codec/container combinations fail before recording starts with a clear error.
 - [ ] Output files are playable in QuickTime Player or Finder preview.
 
-## Save, Retry, and Discard
+## Save and Discard
 
 - [ ] Stopping a recording finalizes a temporary output file before showing the save panel.
 - [ ] Saving to a writable destination moves the recording to the selected path.
-- [ ] Cancelling the save panel offers retry save or discard.
-- [ ] Retry save after cancellation succeeds.
+- [ ] Cancelling the save panel discards the temporary recording and returns OpenRec to Ready.
 - [ ] Discard removes the temporary recording.
 - [ ] Save failure due to permissions or unavailable destination is recoverable.
-- [ ] App returns to the ready state after save or discard.
+- [ ] App returns to the ready state after save, discard, or save-panel cancellation.
+- [ ] Future retry-save behavior is not presented as a current user-visible option.
 
 ## Offline Behavior
 

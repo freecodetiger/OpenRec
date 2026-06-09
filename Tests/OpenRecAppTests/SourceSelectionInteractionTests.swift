@@ -47,6 +47,29 @@ import Testing
 }
 
 @MainActor
+@Test func applyingDisplayDraftForFullScreenWorkflowStartsAfterDisplaySelection() {
+    let adapter = MockAppCoreAdapter(initialSnapshot: .ready)
+    let viewModel = AppShellViewModel(adapter: adapter)
+    var draft = SourceSelectionDraft(snapshot: viewModel.snapshot)
+
+    viewModel.requestFullScreenRecording()
+    draft.selectTarget(id: "display-2")
+    viewModel.startSelectedDisplayRecording(targetID: draft.selectedTargetID)
+
+    #expect(adapter.startRecordingCallCount == 1)
+    #expect(adapter.selectTargetIDs == ["display-2"])
+    #expect(viewModel.snapshot.status == .recording)
+    #expect(viewModel.snapshot.selectedTarget.id == "display-2")
+}
+
+@Test func sourceSelectionCopyClarifiesFullScreenRecordingRequiresSpecificDisplay() {
+    let strings = OpenRecLocalization(.english)
+
+    #expect(strings.chooseSourceDetail == "Choose the specific display or window OpenRec should record. Full-screen recording captures one selected display.")
+    #expect(strings.displayRecording == "Display Recording")
+}
+
+@MainActor
 @Test func applyingWindowDraftUpdatesModeAndTargetThroughViewModel() {
     let adapter = MockAppCoreAdapter(initialSnapshot: .ready)
     let viewModel = AppShellViewModel(adapter: adapter)

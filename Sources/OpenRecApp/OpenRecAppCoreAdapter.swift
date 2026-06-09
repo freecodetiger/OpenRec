@@ -340,15 +340,6 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
         return snapshot
     }
 
-    func retrySave() -> AppShellSnapshot {
-        guard snapshot.status == .awaitingSave else { return snapshot }
-
-        let error = recordingCoordinator.saveCancelled()
-        snapshot = buildSnapshot(settings: snapshot.settings, recordingState: recordingCoordinator.state)
-        snapshot.errorMessage = AppErrorPresenter.message(for: error, strings: strings)
-        return snapshot
-    }
-
     func discardRecording() -> AppShellSnapshot {
         guard snapshot.status == .awaitingSave else { return snapshot }
 
@@ -711,7 +702,7 @@ private enum AppErrorPresenter {
         case let .writerFailed(reason):
             return reason
         case .saveCancelled:
-            return strings.chooseSaveLocationOrDiscard
+            return strings.saveCancelled
         case let .unknown(reason):
             return reason
         }

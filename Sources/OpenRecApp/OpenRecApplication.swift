@@ -3,9 +3,12 @@ import SwiftUI
 
 @main
 struct OpenRecApplication: App {
+    @Environment(\.openWindow) private var openWindow
     @StateObject private var viewModel: AppShellViewModel
     @StateObject private var statusItemController: AppKitStatusItemController
     @StateObject private var windowRecordingWorkflowCoordinator: WindowRecordingWorkflowCoordinator
+    @State private var onboardingPresentationGate = OnboardingWindowPresentationGate()
+    private let onboardingWindowPresenter = UserWindowPresenter()
 
     init() {
         let adapter: AppShellAdapter
@@ -62,7 +65,7 @@ struct OpenRecApplication: App {
             Label("OpenRec", systemImage: viewModel.menuBarSymbolName)
         }
         .menuBarExtraStyle(.window)
-        .onChange(of: viewModel.snapshot.status) { oldStatus, newStatus in
+        .onChange(of: viewModel.snapshot.status, initial: true) { oldStatus, newStatus in
             statusItemController.refreshSymbol()
             switch (oldStatus, newStatus) {
             case (_, .recording):
@@ -71,6 +74,12 @@ struct OpenRecApplication: App {
                 windowRecordingWorkflowCoordinator.dismissActivePanels()
             default:
                 break
+            }
+            onboardingPresentationGate.presentIfNeeded(
+                for: viewModel.snapshot,
+                presenter: onboardingWindowPresenter
+            ) {
+                openWindow(id: "onboarding")
             }
         }
 
@@ -86,7 +95,7 @@ struct OpenRecApplication: App {
         }
         .defaultSize(width: 760, height: 560)
 
-        WindowGroup("Onboarding", id: "onboarding") {
+        Window("Onboarding", id: "onboarding") {
             OnboardingView(
                 snapshot: viewModel.snapshot,
                 onOpenPermissionSettings: viewModel.openPermissionSettings,
@@ -105,7 +114,6 @@ struct OpenRecApplication: App {
             SaveFlowView(
                 snapshot: viewModel.snapshot,
                 onSave: viewModel.saveRecording,
-                onRetrySave: viewModel.retrySave,
                 onDiscard: viewModel.discardRecording
             )
         }

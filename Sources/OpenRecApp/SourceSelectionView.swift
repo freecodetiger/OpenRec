@@ -11,6 +11,13 @@ struct SourceSelectionView: View {
         OpenRecLocalization(viewModel.snapshot.appLanguage)
     }
 
+    private var isDisplayRecordingWorkflow: Bool {
+        if case .selectingDisplay = viewModel.displayRecordingWorkflow {
+            return true
+        }
+        return false
+    }
+
     init(viewModel: AppShellViewModel) {
         self.viewModel = viewModel
         _draft = State(initialValue: SourceSelectionDraft(snapshot: viewModel.snapshot))
@@ -24,8 +31,10 @@ struct SourceSelectionView: View {
             Text(strings.chooseSourceDetail)
                 .foregroundStyle(.secondary)
 
-            modePicker
-            if draft.mode == .window {
+            if !isDisplayRecordingWorkflow {
+                modePicker
+            }
+            if !isDisplayRecordingWorkflow && draft.mode == .window {
                 overlayAction
             }
             targetList
@@ -36,7 +45,9 @@ struct SourceSelectionView: View {
             draft = SourceSelectionDraft(snapshot: snapshot)
         }
         .onAppear {
-            if draft.mode == .window {
+            if isDisplayRecordingWorkflow {
+                draft.selectMode(.display)
+            } else if draft.mode == .window {
                 openWindowSelectionOverlay()
             }
         }
@@ -49,6 +60,7 @@ struct SourceSelectionView: View {
         }
         .onDisappear {
             overlayPresenter.dismiss()
+            viewModel.cancelDisplayRecordingWorkflow()
         }
     }
 
@@ -108,19 +120,28 @@ struct SourceSelectionView: View {
     private var actions: some View {
         HStack {
             Button(strings.cancel) {
+                viewModel.cancelDisplayRecordingWorkflow()
                 dismiss()
             }
             .keyboardShortcut(.cancelAction)
 
             Spacer()
 
-            Button(strings.useSelectedSource) {
-                viewModel.applySourceSelection(draft)
+            Button(primaryActionTitle) {
+                if isDisplayRecordingWorkflow {
+                    viewModel.startSelectedDisplayRecording(targetID: draft.selectedTargetID)
+                } else {
+                    viewModel.applySourceSelection(draft)
+                }
                 dismiss()
             }
             .keyboardShortcut(.defaultAction)
             .disabled(!draft.canApply)
         }
+    }
+
+    private var primaryActionTitle: String {
+        isDisplayRecordingWorkflow ? strings.startFullScreenRecording : strings.useSelectedSource
     }
 
     private func openWindowSelectionOverlay() {

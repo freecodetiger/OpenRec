@@ -20,7 +20,6 @@ protocol AppShellAdapter: AnyObject {
     func reopenApplication()
     func refreshPermissions() -> AppShellSnapshot
     func saveRecording() -> AppShellSnapshot
-    func retrySave() -> AppShellSnapshot
     func discardRecording() -> AppShellSnapshot
     func selectScenario(_ snapshot: AppShellSnapshot) -> AppShellSnapshot
 }
@@ -29,6 +28,7 @@ protocol AppShellAdapter: AnyObject {
 final class AppShellViewModel: ObservableObject {
     @Published private(set) var snapshot: AppShellSnapshot
     @Published private(set) var windowRecordingWorkflow: WindowRecordingWorkflowState = .idle
+    @Published private(set) var displayRecordingWorkflow: DisplayRecordingWorkflowState = .idle
     var onRecordingStoppedBeforeSave: (() -> Void)?
 
     private let adapter: AppShellAdapter
@@ -49,10 +49,6 @@ final class AppShellViewModel: ObservableObject {
     }
 
     var canSaveRecording: Bool {
-        snapshot.status == .awaitingSave
-    }
-
-    var canRetrySave: Bool {
         snapshot.status == .awaitingSave
     }
 
@@ -88,6 +84,10 @@ final class AppShellViewModel: ObservableObject {
         snapshot.availableTargets.filter { $0.mode == snapshot.mode }
     }
 
+    var displayTargets: [SourceTargetOption] {
+        snapshot.availableTargets.filter { $0.mode == .display }
+    }
+
     var applicationTargets: [ApplicationTargetOption] {
         let windows = snapshot.availableTargets.filter { $0.mode == .window }
         let grouped = Dictionary(grouping: windows, by: \.applicationName)
@@ -112,6 +112,7 @@ final class AppShellViewModel: ObservableObject {
         guard canStartRecording else { return }
         snapshot = adapter.startRecording()
         if snapshot.status == .recording {
+            displayRecordingWorkflow = .idle
             recordingStartedAt = now()
             refreshElapsedTime()
         }
@@ -135,7 +136,7 @@ final class AppShellViewModel: ObservableObject {
     func toggleRecording() {
         switch snapshot.status {
         case .ready:
-            startRecording()
+            requestFullScreenRecording()
         case .recording:
             stopRecording()
         case .awaitingSave, .permissionRequired, .error:
@@ -150,11 +151,78 @@ final class AppShellViewModel: ObservableObject {
     func selectMode(_ mode: CaptureMode) {
         guard mode != snapshot.mode else { return }
         windowRecordingWorkflow = .idle
+        displayRecordingWorkflow = .idle
         snapshot = adapter.selectMode(mode)
+    }
+
+    func requestFullScreenRecording() {
+        guard snapshot.status == .ready else { return }
+        let displays = displayTargets
+        guard let display = displays.first else { return }
+
+        guard displays.count > 1 else {
+            if snapshot.mode != .display {
+                snapshot = adapter.selectMode(.display)
+            }
+            if snapshot.selectedTarget.id != display.id {
+                snapshot = adapter.selectTarget(id: display.id)
+            }
+            startRecording()
+            return
+        }
+
+        let previousMode = snapshot.mode
+        let previousTargetID = snapshot.selectedTarget.id
+        windowRecordingWorkflow = .idle
+        displayRecordingWorkflow = .selectingDisplay(
+            previousMode: previousMode,
+            previousTargetID: previousTargetID
+        )
+        if snapshot.mode != .display {
+            snapshot = adapter.selectMode(.display)
+        }
+    }
+
+    func startSelectedDisplayRecording(targetID: String) {
+        guard case .selectingDisplay = displayRecordingWorkflow,
+              snapshot.status == .ready,
+              snapshot.availableTargets.contains(where: { $0.id == targetID && $0.mode == .display }) else {
+            return
+        }
+
+        if snapshot.mode != .display {
+            snapshot = adapter.selectMode(.display)
+        }
+        if snapshot.selectedTarget.id != targetID {
+            snapshot = adapter.selectTarget(id: targetID)
+        }
+        displayRecordingWorkflow = .idle
+        startRecording()
+    }
+
+    func cancelDisplayRecordingWorkflow() {
+        let previousSelection: (mode: CaptureMode, targetID: String)?
+        switch displayRecordingWorkflow {
+        case .idle:
+            previousSelection = nil
+        case let .selectingDisplay(previousMode, previousTargetID):
+            previousSelection = (previousMode, previousTargetID)
+        }
+
+        displayRecordingWorkflow = .idle
+        guard let previousSelection else { return }
+
+        if snapshot.mode != previousSelection.mode {
+            snapshot = adapter.selectMode(previousSelection.mode)
+        }
+        if snapshot.selectedTarget.id != previousSelection.targetID {
+            snapshot = adapter.selectTarget(id: previousSelection.targetID)
+        }
     }
 
     func requestWindowRecordingWorkflow() -> Bool {
         guard snapshot.status == .ready else { return false }
+        displayRecordingWorkflow = .idle
         windowRecordingWorkflow = .selectingWindow(
             previousMode: snapshot.mode,
             previousTargetID: snapshot.selectedTarget.id
@@ -164,6 +232,7 @@ final class AppShellViewModel: ObservableObject {
 
     func requestApplicationRecordingWorkflow() -> Bool {
         guard snapshot.status == .ready else { return false }
+        displayRecordingWorkflow = .idle
         windowRecordingWorkflow = .selectingApplication(
             previousMode: snapshot.mode,
             previousTargetID: snapshot.selectedTarget.id
@@ -320,11 +389,6 @@ final class AppShellViewModel: ObservableObject {
     func saveRecording() {
         guard canSaveRecording else { return }
         snapshot = adapter.saveRecording()
-    }
-
-    func retrySave() {
-        guard canRetrySave else { return }
-        snapshot = adapter.retrySave()
     }
 
     func discardRecording() {

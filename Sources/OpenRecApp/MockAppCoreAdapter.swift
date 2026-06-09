@@ -8,7 +8,6 @@ final class MockAppCoreAdapter: AppShellAdapter {
     private(set) var startRecordingCallCount = 0
     private(set) var stopRecordingCallCount = 0
     private(set) var saveRecordingCallCount = 0
-    private(set) var retrySaveCallCount = 0
     private(set) var discardRecordingCallCount = 0
     private(set) var refreshCallCount = 0
     private(set) var refreshPermissionsCallCount = 0
@@ -147,13 +146,6 @@ final class MockAppCoreAdapter: AppShellAdapter {
         snapshot.status = .ready
         snapshot.errorMessage = nil
         snapshot.pendingSaveURL = nil
-        return snapshot
-    }
-
-    func retrySave() -> AppShellSnapshot {
-        guard snapshot.status == .awaitingSave else { return snapshot }
-        retrySaveCallCount += 1
-        snapshot.errorMessage = "Choose a save location or discard the recording."
         return snapshot
     }
 

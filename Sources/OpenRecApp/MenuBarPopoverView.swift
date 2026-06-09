@@ -143,8 +143,11 @@ struct MenuBarPopoverView: View {
 
     private var fullScreenPrimaryAction: some View {
         Button {
-            viewModel.selectMode(.display)
-            viewModel.startRecording()
+            viewModel.requestFullScreenRecording()
+            if case .selectingDisplay = viewModel.displayRecordingWorkflow {
+                onCloseMenu()
+                openWindow(id: "source-selection")
+            }
         } label: {
             Label(presentation.primaryActionTitle, systemImage: presentation.primaryActionSymbolName)
                 .frame(maxWidth: .infinity)

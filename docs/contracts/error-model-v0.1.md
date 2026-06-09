@@ -11,6 +11,5 @@ Core returns structured `OpenRecError` values. App code maps these to UI.
 | `hotkeyConflict` | Reject new hotkey and keep previous value. |
 | `writerInitializationFailed(reason)` | Block recording start. |
 | `writerFailed(reason)` | Stop capture and clean temp file. |
-| `saveCancelled(path)` | Offer retry save or discard. |
+| `saveCancelled(path)` | Low-level cancellation signal; current App save-panel cancellation discards the temporary recording and returns to ready. |
 | `unknown(reason)` | Show generic recoverable error. |
-

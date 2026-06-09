@@ -100,7 +100,7 @@ struct RecordingCoordinatorTests {
         #expect(finalizer.discardedURLs == [finalizedURL])
     }
 
-    @Test func saveCancelledFromAwaitingSaveKeepsTempFileAvailableForRetry() throws {
+    @Test func saveCancelledFromAwaitingSaveReportsCancellationWithoutDiscardingTempFile() throws {
         let finalizedURL = URL(filePath: "/tmp/openrec-finalized.mp4")
         let finalizer = StubTemporaryRecordingFinalizer()
         let coordinator = try coordinatorAwaitingSave(finalizedURL: finalizedURL, finalizer: finalizer)

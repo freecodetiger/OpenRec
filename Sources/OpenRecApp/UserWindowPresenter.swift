@@ -29,3 +29,23 @@ struct UserWindowPresenter {
         openWindow()
     }
 }
+
+@MainActor
+struct OnboardingWindowPresentationGate {
+    private var hasPresentedOnboarding = false
+
+    mutating func presentIfNeeded(
+        for snapshot: AppShellSnapshot,
+        presenter: UserWindowPresenter,
+        openWindow: () -> Void
+    ) {
+        guard snapshot.status == .permissionRequired,
+              !snapshot.requiredPermissions.isEmpty,
+              !hasPresentedOnboarding else {
+            return
+        }
+
+        hasPresentedOnboarding = true
+        presenter.present(openWindow)
+    }
+}

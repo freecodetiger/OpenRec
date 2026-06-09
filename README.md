@@ -7,6 +7,7 @@ OpenRec is an open-source macOS screen recorder intended as a lightweight QuickT
 - macOS 14 or later.
 - Display recording with explicit display selection.
 - Window recording with click-to-select selection.
+- App window recording by choosing an application first, then one visible window from that application.
 - Microphone audio recording.
 - Menu bar start and stop controls.
 - User-configurable global start/stop hotkey.
@@ -15,9 +16,9 @@ OpenRec is an open-source macOS screen recorder intended as a lightweight QuickT
 - Frame-rate presets: 25, 30, and 60 fps.
 - Quality presets: compact, standard, and high.
 - Original source resolution only.
-- Save panel after recording with save retry or discard behavior.
+- Save panel after recording; cancelling the save panel discards the temporary recording.
 
-Out of scope for the MVP: system audio, pause/resume, countdowns, recording history, built-in editing, uploads, telemetry, automatic updates, signing, notarization, Mac App Store distribution, and arbitrary resolution controls.
+Out of scope for the MVP: system audio, pause/resume, countdowns, recording history, save retry after cancellation, built-in editing, uploads, telemetry, automatic updates, signing, notarization, Mac App Store distribution, and arbitrary resolution controls.
 
 ## Build and Test
 
@@ -62,7 +63,7 @@ OpenRec is designed to run fully offline in the MVP:
 - No update checks.
 - No upload or sharing flow.
 - Settings are stored locally as JSON in `~/Library/Application Support/OpenRec/settings.json`.
-- Temporary recordings are local and should be cleaned up after save or discard.
+- Temporary recordings are local and are cleaned up after save, explicit discard, or save-panel cancellation.
 
 ## Release Stage and Gatekeeper
 

@@ -67,6 +67,15 @@ import Foundation
     #expect(presentation.showsPreferences == false)
 }
 
+@Test func awaitingSaveCopyDoesNotAdvertiseRetryAsCurrentSaveBehavior() {
+    let english = OpenRecLocalization(.english)
+    let chinese = OpenRecLocalization(.simplifiedChinese)
+
+    #expect(english.statusDetail(.awaitingSave) == "Save or discard the finished recording.")
+    #expect(chinese.statusDetail(.awaitingSave) == "保存或丢弃已完成的录制。")
+    #expect(AppShellStatus.awaitingSave.detail == "Save or discard the finished recording.")
+}
+
 @Test func menuPresentationUsesSelectedAppLanguage() {
     var snapshot = AppShellSnapshot.ready
     snapshot.appLanguage = .simplifiedChinese
@@ -88,6 +97,20 @@ import Foundation
     #expect(strings.qualityLabel(.high) == "高细节")
     #expect(strings.audioPresetLabel(.standard) == "标准")
     #expect(strings.permissionStatus(.granted) == "已授权")
+}
+
+@Test func localizationNamesApplicationWindowWorkflowWithoutPromisingWholeAppCapture() {
+    let english = OpenRecLocalization(.english)
+    let chinese = OpenRecLocalization(.simplifiedChinese)
+
+    #expect(english.applicationRecording == "Record App Window")
+    #expect(english.chooseApplicationTitle == "Choose App Window")
+    #expect(english.noRecordableApplicationsTitle == "No Recordable App Windows")
+    #expect(english.noRecordableApplicationsDetail == "Open an application window and try App Window Recording again.")
+    #expect(chinese.applicationRecording == "录制应用窗口")
+    #expect(chinese.chooseApplicationTitle == "选择应用窗口")
+    #expect(chinese.noRecordableApplicationsTitle == "没有可录制应用窗口")
+    #expect(chinese.noRecordableApplicationsDetail == "打开一个应用窗口后再尝试应用窗口录制。")
 }
 
 @Test func recordingParameterSummaryShowsCurrentBitrateAndParameters() {
@@ -144,6 +167,42 @@ import Foundation
 }
 
 @MainActor
+@Test func onboardingWindowPresentationOpensWhenPermissionsAreMissing() {
+    let foregroundActivator = SpyForegroundActivator()
+    let presenter = UserWindowPresenter(foregroundActivator: foregroundActivator)
+    var gate = OnboardingWindowPresentationGate()
+    var openWindowCallCount = 0
+
+    gate.presentIfNeeded(for: .permissionRequired, presenter: presenter) {
+        openWindowCallCount += 1
+    }
+
+    #expect(foregroundActivator.activateCallCount == 1)
+    #expect(openWindowCallCount == 1)
+}
+
+@MainActor
+@Test func onboardingWindowPresentationSkipsGrantedPermissionsAndDoesNotRepeatMissingPermissions() {
+    let foregroundActivator = SpyForegroundActivator()
+    let presenter = UserWindowPresenter(foregroundActivator: foregroundActivator)
+    var gate = OnboardingWindowPresentationGate()
+    var openWindowCallCount = 0
+
+    gate.presentIfNeeded(for: .ready, presenter: presenter) {
+        openWindowCallCount += 1
+    }
+    gate.presentIfNeeded(for: .permissionRequired, presenter: presenter) {
+        openWindowCallCount += 1
+    }
+    gate.presentIfNeeded(for: .permissionRequired, presenter: presenter) {
+        openWindowCallCount += 1
+    }
+
+    #expect(foregroundActivator.activateCallCount == 1)
+    #expect(openWindowCallCount == 1)
+}
+
+@MainActor
 @Test func primaryActionReflectsRecordingStatus() {
     let adapter = MockAppCoreAdapter(initialSnapshot: .recording)
     let viewModel = AppShellViewModel(adapter: adapter)
@@ -179,8 +238,11 @@ import Foundation
 @Test func viewModelHotkeyTriggerStartsAndStopsRecording() async {
     let hotkey = Hotkey(keyCode: 49, modifiers: [.command, .shift])
     let registry = InMemoryHotkeyRegistry()
+    var snapshot = AppShellSnapshot.ready
+    snapshot.availableTargets = [AppShellSnapshot.displayTarget, AppShellSnapshot.windowTarget]
+    snapshot.selectedTarget = AppShellSnapshot.displayTarget
     let adapter = MockAppCoreAdapter(
-        initialSnapshot: .ready,
+        initialSnapshot: snapshot,
         hotkeyManager: HotkeyManager(registry: registry, savedHotkey: hotkey)
     )
     let viewModel = AppShellViewModel(adapter: adapter)
@@ -197,6 +259,25 @@ import Foundation
 
     #expect(viewModel.snapshot.status == .ready)
     #expect(adapter.stopRecordingCallCount == 1)
+}
+
+@MainActor
+@Test func viewModelHotkeyTriggerRequiresDisplaySelectionWhenMultipleDisplaysAreAvailable() async {
+    let hotkey = Hotkey(keyCode: 49, modifiers: [.command, .shift])
+    let registry = InMemoryHotkeyRegistry()
+    let adapter = MockAppCoreAdapter(
+        initialSnapshot: .ready,
+        hotkeyManager: HotkeyManager(registry: registry, savedHotkey: hotkey)
+    )
+    let viewModel = AppShellViewModel(adapter: adapter)
+
+    viewModel.startHotkeyMonitoring()
+    registry.trigger(hotkey)
+    await Task.yield()
+
+    #expect(viewModel.displayRecordingWorkflow == .selectingDisplay(previousMode: .display, previousTargetID: "display-1"))
+    #expect(adapter.startRecordingCallCount == 0)
+    #expect(viewModel.snapshot.status == .ready)
 }
 
 @MainActor
@@ -308,6 +389,49 @@ import Foundation
 
     #expect(viewModel.snapshot.status == .permissionRequired)
     #expect(viewModel.canStartRecording == false)
+}
+
+@MainActor
+@Test func fullScreenRecordingRequiresDisplaySelectionWhenMultipleDisplaysAreAvailable() {
+    let adapter = MockAppCoreAdapter(initialSnapshot: .ready)
+    let viewModel = AppShellViewModel(adapter: adapter)
+
+    viewModel.requestFullScreenRecording()
+
+    #expect(viewModel.displayRecordingWorkflow == .selectingDisplay(previousMode: .display, previousTargetID: "display-1"))
+    #expect(adapter.startRecordingCallCount == 0)
+    #expect(viewModel.snapshot.status == .ready)
+}
+
+@MainActor
+@Test func selectingDisplayForFullScreenRecordingStartsOnlyAfterSelection() {
+    let adapter = MockAppCoreAdapter(initialSnapshot: .ready)
+    let viewModel = AppShellViewModel(adapter: adapter)
+
+    viewModel.requestFullScreenRecording()
+    viewModel.startSelectedDisplayRecording(targetID: "display-2")
+
+    #expect(viewModel.displayRecordingWorkflow == .idle)
+    #expect(adapter.selectTargetIDs == ["display-2"])
+    #expect(adapter.startRecordingCallCount == 1)
+    #expect(viewModel.snapshot.status == .recording)
+    #expect(viewModel.snapshot.selectedTarget.id == "display-2")
+}
+
+@MainActor
+@Test func fullScreenRecordingStartsImmediatelyWhenOnlyOneDisplayIsAvailable() {
+    var snapshot = AppShellSnapshot.ready
+    snapshot.availableTargets = [AppShellSnapshot.displayTarget, AppShellSnapshot.windowTarget]
+    snapshot.selectedTarget = AppShellSnapshot.displayTarget
+    let adapter = MockAppCoreAdapter(initialSnapshot: snapshot)
+    let viewModel = AppShellViewModel(adapter: adapter)
+
+    viewModel.requestFullScreenRecording()
+
+    #expect(viewModel.displayRecordingWorkflow == .idle)
+    #expect(adapter.startRecordingCallCount == 1)
+    #expect(viewModel.snapshot.status == .recording)
+    #expect(viewModel.snapshot.selectedTarget.id == "display-1")
 }
 
 @MainActor
@@ -541,12 +665,8 @@ import Foundation
     let viewModel = AppShellViewModel(adapter: adapter)
 
     #expect(viewModel.canSaveRecording == true)
-    #expect(viewModel.canRetrySave == true)
     #expect(viewModel.canDiscardRecording == true)
     #expect(viewModel.canStartRecording == false)
-
-    viewModel.retrySave()
-    #expect(adapter.retrySaveCallCount == 1)
 
     let saveAdapter = MockAppCoreAdapter(initialSnapshot: .awaitingSave)
     let saveViewModel = AppShellViewModel(adapter: saveAdapter)
@@ -566,15 +686,12 @@ import Foundation
     let adapter = MockAppCoreAdapter(initialSnapshot: .ready)
     let viewModel = AppShellViewModel(adapter: adapter)
 
-    viewModel.retrySave()
     viewModel.saveRecording()
     viewModel.discardRecording()
 
-    #expect(adapter.retrySaveCallCount == 0)
     #expect(adapter.saveRecordingCallCount == 0)
     #expect(adapter.discardRecordingCallCount == 0)
     #expect(viewModel.canSaveRecording == false)
-    #expect(viewModel.canRetrySave == false)
     #expect(viewModel.canDiscardRecording == false)
 }
 
@@ -966,7 +1083,7 @@ import Foundation
 }
 
 @MainActor
-@Test func productionAdapterSaveRetryAndDiscardRespectAwaitingSaveBoundary() async {
+@Test func productionAdapterSaveAndDiscardRespectAwaitingSaveBoundary() async {
     let pendingURL = URL(filePath: "/tmp/openrec-finalized.mp4")
     let finalizer = NoOpTemporaryRecordingFinalizer()
     let adapter = awaitingSaveAdapter(
@@ -976,11 +1093,8 @@ import Foundation
     )
 
     _ = await adapter.refresh()
-    let retrySnapshot = adapter.retrySave()
     let savedSnapshot = adapter.saveRecording()
 
-    #expect(retrySnapshot.status == .awaitingSave)
-    #expect(retrySnapshot.errorMessage == "Choose a save location or discard the recording.")
     #expect(savedSnapshot.status == .ready)
     #expect(savedSnapshot.pendingSaveURL == nil)
 

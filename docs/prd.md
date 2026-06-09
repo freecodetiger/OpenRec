@@ -21,6 +21,7 @@ OpenRec is not a video editor, cloud sharing product, collaboration tool, or tel
 - Pause and resume.
 - Countdown before recording.
 - Recording history.
+- Retry save after cancelling the save panel.
 - Built-in preview or editing.
 - Recording upload, sharing links, comments, or team workflows.
 - Telemetry, analytics, crash reporting, or any network access.
@@ -45,6 +46,7 @@ The first release includes:
 - First-launch permission onboarding.
 - Display recording with explicit display selection.
 - Window recording with click-to-select window interaction.
+- App window recording: choose an application first, then record one visible window from that application.
 - Microphone recording.
 - Menu bar start and stop controls.
 - User-customizable global start/stop hotkey.
@@ -79,6 +81,15 @@ Users choose a recording mode named "Window Recording", then enter a selection m
 - Esc cancels selection.
 - If the selected window later becomes unavailable, OpenRec prompts the user to select a new target.
 
+### App Window Recording
+
+Users choose a recording path named "App Window Recording". OpenRec must not present this as recording an entire application:
+
+- The user first chooses an application that has visible recordable windows.
+- OpenRec then lets the user choose one visible window from that application.
+- The actual recording target is the selected window.
+- Closing or changing the selected window follows the same recovery behavior as Window Recording.
+
 ### Future Region Recording
 
 Custom region recording is planned after MVP. It should use the selected region's original pixel size and should not require changing the MVP settings model.
@@ -110,8 +121,8 @@ Defaults:
 ## Recording Flow
 
 1. User opens the menu bar popover.
-2. User chooses Display Recording or Window Recording.
-3. User selects a concrete display or window.
+2. User chooses Display Recording, Window Recording, or App Window Recording.
+3. User selects a concrete display or window. In App Window Recording, the user chooses an application first, then chooses one of that application's visible windows.
 4. User confirms or adjusts recording settings before starting.
 5. OpenRec validates permissions, target availability, and settings.
 6. User starts recording from the menu bar or global hotkey.
@@ -119,7 +130,8 @@ Defaults:
 8. User stops recording from the menu bar or global hotkey.
 9. OpenRec finalizes the temporary output file.
 10. OpenRec shows a save panel.
-11. User saves the file, retries saving, or discards the temporary recording.
+11. User saves the file or cancels the save panel.
+12. If the user cancels the save panel, OpenRec discards the temporary recording and returns to ready.
 
 ## Permissions
 
@@ -167,7 +179,7 @@ OpenRec is fully offline in MVP:
 - No update checks.
 - No upload or sharing.
 - Settings are stored locally as JSON.
-- Temporary recordings are stored locally and cleaned up after save or discard.
+- Temporary recordings are stored locally and cleaned up after save, explicit discard, or save-panel cancellation.
 
 ## Release Plan
 
@@ -186,3 +198,4 @@ The README must explain that unsigned builds may require users to manually allow
 - v0.3: System audio recording.
 - v0.4: Signing, notarization, and Homebrew Cask.
 - v0.5: Optional post-recording export or transcoding presets.
+- Future: save retry after cancellation, if product requirements change.

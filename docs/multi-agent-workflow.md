@@ -154,7 +154,7 @@ Agents:
 - App shell: menu bar popover, state display, start/stop button shell.
 - Onboarding/preferences: permission status UI, settings controls, hotkey UI.
 - Source selection: display picker and window overlay.
-- Save flow shell: save/retry/discard UI.
+- Save flow shell: save/discard UI, with save-panel cancellation discarding the temporary file.
 
 Exit criteria:
 
@@ -193,7 +193,7 @@ Deliverables:
 - Preferences uses real `SettingsStore`, microphone provider, and hotkey manager.
 - Onboarding uses real `PermissionChecker`.
 - Source selection validates real display/window targets.
-- Save panel moves, retries, or discards finalized temp files.
+- Save panel moves finalized temp files, or discards them when the user cancels.
 
 Exit criteria:
 
@@ -218,7 +218,7 @@ Exit criteria:
 - Real display recording verified on macOS hardware.
 - Real window recording verified on macOS hardware.
 - Mic recording verified on macOS hardware.
-- Save/cancel/retry/discard verified.
+- Save, discard, and save-panel cancellation verified.
 - README states that the current release artifact is source ZIP only, not a signed or notarized `.app`.
 - No release-blocking QA issues remain.
 
@@ -270,7 +270,7 @@ Required:
 - One real window recording.
 - One microphone recording.
 - MP4/H.264 default path works.
-- Save, cancel save, retry save, and discard temp file are verified.
+- Save, cancel save with discard, and explicit discard temp file are verified.
 
 ### Release Candidate
 

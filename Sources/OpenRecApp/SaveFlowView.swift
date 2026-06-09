@@ -3,7 +3,6 @@ import SwiftUI
 struct SaveFlowView: View {
     var snapshot: AppShellSnapshot
     var onSave: () -> Void = {}
-    var onRetrySave: () -> Void = {}
     var onDiscard: () -> Void = {}
 
     private var strings: OpenRecLocalization {
@@ -30,8 +29,6 @@ struct SaveFlowView: View {
 
             HStack {
                 Button(strings.saveAs, action: onSave)
-                    .disabled(!canUseSaveActions)
-                Button(strings.retrySave, action: onRetrySave)
                     .disabled(!canUseSaveActions)
                 Button(strings.discard, role: .destructive, action: onDiscard)
                     .disabled(!canUseSaveActions)

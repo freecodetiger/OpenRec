@@ -30,7 +30,7 @@ enum AppShellStatus: Equatable, Sendable {
         case .recording:
             "Capture is running with the selected settings."
         case .awaitingSave:
-            "Save, retry, or discard the finished recording."
+            "Save or discard the finished recording."
         case .permissionRequired:
             "OpenRec needs macOS permissions before recording."
         case .error:
@@ -45,6 +45,11 @@ enum WindowRecordingWorkflowState: Equatable, Sendable {
     case selectingApplication(previousMode: CaptureMode, previousTargetID: String)
     case selectingApplicationWindow(previousMode: CaptureMode, previousTargetID: String, applicationName: String)
     case configuringWindow(previousMode: CaptureMode, previousTargetID: String, selectedTargetID: String)
+}
+
+enum DisplayRecordingWorkflowState: Equatable, Sendable {
+    case idle
+    case selectingDisplay(previousMode: CaptureMode, previousTargetID: String)
 }
 
 struct ApplicationTargetOption: Equatable, Identifiable, Sendable {

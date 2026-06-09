@@ -214,7 +214,7 @@ Rules:
 9. User stops recording.
 10. Core stops capture, finalizes the writer, and returns the temporary file URL.
 11. App shows `NSSavePanel`.
-12. App moves the file to the selected destination or asks Core to discard/retry.
+12. App moves the file to the selected destination or asks Core to discard it when the save panel is cancelled.
 
 ## Capture and Encoding
 
@@ -272,7 +272,7 @@ enum OpenRecError: Error, Equatable {
     case hotkeyConflict
     case writerInitializationFailed(String)
     case writerFailed(String)
-    case saveCancelled(URL)
+    case saveCancelled(String)
     case unknown(String)
 }
 ```
@@ -285,7 +285,7 @@ Handling rules:
 - Microphone unavailable: fall back to default when possible; otherwise block start.
 - Hotkey conflict: reject setting and keep the previous hotkey.
 - Writer failure: stop capture and clean up the temporary file.
-- Save cancelled: allow retry save or discard.
+- Save cancelled: discard the temporary recording and return to ready.
 
 ## Preferences UI
 
@@ -342,7 +342,7 @@ App-level tests and manual QA:
 - 25, 30, and 60 fps presets.
 - Microphone switching.
 - Stop and save panel.
-- Save cancellation retry/discard.
+- Save-panel cancellation discard.
 - Permission revocation and recovery.
 
 ## CI and Release
