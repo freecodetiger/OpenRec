@@ -276,6 +276,7 @@ import Foundation
     await Task.yield()
 
     #expect(viewModel.displayRecordingWorkflow == .selectingDisplay(previousMode: .display, previousTargetID: "display-1"))
+    #expect(viewModel.displaySelectionPresentationRequestCount == 1)
     #expect(adapter.startRecordingCallCount == 0)
     #expect(viewModel.snapshot.status == .ready)
 }
@@ -399,8 +400,22 @@ import Foundation
     viewModel.requestFullScreenRecording()
 
     #expect(viewModel.displayRecordingWorkflow == .selectingDisplay(previousMode: .display, previousTargetID: "display-1"))
+    #expect(viewModel.displaySelectionPresentationRequestCount == 1)
     #expect(adapter.startRecordingCallCount == 0)
     #expect(viewModel.snapshot.status == .ready)
+}
+
+@MainActor
+@Test func fullScreenRecordingDoesNotRequestDuplicateDisplaySelectionWindows() {
+    let adapter = MockAppCoreAdapter(initialSnapshot: .ready)
+    let viewModel = AppShellViewModel(adapter: adapter)
+
+    viewModel.requestFullScreenRecording()
+    viewModel.requestFullScreenRecording()
+
+    #expect(viewModel.displayRecordingWorkflow == .selectingDisplay(previousMode: .display, previousTargetID: "display-1"))
+    #expect(viewModel.displaySelectionPresentationRequestCount == 1)
+    #expect(adapter.startRecordingCallCount == 0)
 }
 
 @MainActor
@@ -808,6 +823,44 @@ import Foundation
     #expect(snapshot.settings.outputFormat == .mov)
     #expect(snapshot.settings.videoCodec == .hevc)
     #expect(snapshot.requiredPermissions.isEmpty)
+}
+
+@MainActor
+@Test func productionAdapterUsesDefaultMicrophoneDeviceWhenSettingsDoNotPinOne() async throws {
+    let settingsDirectory = temporarySettingsDirectory()
+    let settingsStore = SettingsStore(settingsDirectory: settingsDirectory)
+    try settingsStore.save(AppSettings(
+        schemaVersion: 1,
+        recording: .defaults
+    ))
+
+    let adapter = OpenRecAppCoreAdapter(
+        settingsStore: settingsStore,
+        captureSourceProvider: InMemoryCaptureSourceProvider(
+            displays: [
+                DisplaySourceMetadata(
+                    id: DisplayID(rawValue: 10),
+                    name: "Main Display",
+                    pixelSize: CGSize(width: 3024, height: 1964),
+                    isAvailable: true
+                )
+            ],
+            windows: []
+        ),
+        audioDeviceProvider: InMemoryAudioDeviceProvider(devices: [
+            MicrophoneDevice(id: "mic-1", name: "Built-in Microphone", isDefault: true),
+            MicrophoneDevice(id: "mic-2", name: "Studio Microphone", isDefault: false)
+        ]),
+        permissionChecker: PermissionChecker(provider: InMemoryPermissionStatusProvider(
+            statuses: Dictionary(uniqueKeysWithValues: PermissionKind.allCases.map { ($0, .granted) })
+        )),
+        hotkeyManager: HotkeyManager(registry: InMemoryHotkeyRegistry())
+    )
+
+    let snapshot = await adapter.refresh()
+
+    #expect(snapshot.selectedMicrophoneID == "mic-1")
+    #expect(snapshot.settings.microphoneDeviceID == "mic-1")
 }
 
 @MainActor

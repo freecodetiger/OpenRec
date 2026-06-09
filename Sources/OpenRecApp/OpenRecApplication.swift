@@ -82,6 +82,11 @@ struct OpenRecApplication: App {
                 openWindow(id: "onboarding")
             }
         }
+        .onChange(of: viewModel.displaySelectionPresentationRequestCount) { oldCount, newCount in
+            guard newCount > oldCount else { return }
+            statusItemController.closePopover()
+            openWindow(id: "source-selection")
+        }
 
         Window("Preferences", id: "preferences") {
             PreferencesView(

@@ -49,7 +49,6 @@ The first release includes:
 - App window recording: choose an application first, then record one visible window from that application.
 - Microphone recording.
 - Menu bar start and stop controls.
-- User-customizable global start/stop hotkey.
 - Menu bar quick selection for recording mode, target, and microphone.
 - Preferences window for full settings.
 - Output formats: MP4 and MOV.
@@ -59,7 +58,7 @@ The first release includes:
 - Original source resolution only. Users do not choose 720p, 1080p, custom size, or scaling in MVP.
 - Save panel after recording finishes.
 - GitHub Actions build/test and simple release packaging.
-- GitHub Releases distribution as source ZIP for the current MVP stage.
+- GitHub Releases distribution as source ZIP and unsigned or ad-hoc signed macOS app ZIP for the current MVP stage.
 
 ## Recording Modes
 
@@ -166,7 +165,7 @@ Preferences include:
 - Recording: default mode and cursor behavior.
 - Video: output format, codec, frame rate, and quality preset.
 - Audio: microphone device and audio quality preset.
-- Shortcuts: custom global start/stop hotkey.
+- Shortcuts: saved global start/stop hotkey status; custom shortcut capture UI is deferred.
 - Permissions: status and System Settings links.
 
 ## Privacy
@@ -187,7 +186,8 @@ Distribution:
 
 - GitHub Releases.
 - Source ZIP artifact required.
-- Prebuilt `.app`, DMG, signing, and notarization are not part of the current MVP release pipeline.
+- macOS app ZIP artifact required for manual distribution review.
+- DMG, Developer ID signing, notarization, and Mac App Store distribution are not required for the current MVP release pipeline.
 
 The README must explain that unsigned builds may require users to manually allow the app in macOS Gatekeeper.
 

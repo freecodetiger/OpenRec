@@ -193,11 +193,11 @@ Rules:
 
 ### HotkeyManager
 
-Registers and updates the global start/stop hotkey.
+Registers a saved global start/stop hotkey when one exists.
 
 Rules:
 
-- The user can customize the hotkey.
+- User-facing shortcut capture UI is deferred beyond the current MVP.
 - Conflicting hotkeys are rejected and not saved.
 - If registration fails at app launch, the app disables the hotkey and shows a preferences error.
 
@@ -353,9 +353,9 @@ GitHub Actions:
 - Build the Swift package and app.
 - Run tests.
 - Run whitespace and release packaging script checks.
-- On release tag, create a source ZIP artifact.
+- On release tag, create source ZIP and macOS app ZIP artifacts with checksums.
 
-MVP release does not include a prebuilt `.app` archive, DMG, signing, notarization, auto-update, Mac App Store distribution, or Homebrew Cask.
+MVP release does not include a DMG, auto-update, Mac App Store distribution, or Homebrew Cask. The macOS app ZIP is unsigned or ad-hoc signed unless Developer ID signing and notarization credentials are supplied.
 
 ## Implementation Assumptions to Validate
 

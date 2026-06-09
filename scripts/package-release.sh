@@ -74,14 +74,11 @@ create_app_zip() {
     app="$1"
     zip_path="$2"
     rm -f "$zip_path"
-    if command -v ditto >/dev/null 2>&1; then
-        ditto -c -k --keepParent "$app" "$zip_path"
-    else
-        (
-            cd "$(dirname "$app")"
-            /usr/bin/zip -qry "$zip_path" "$(basename "$app")"
-        )
-    fi
+    (
+        cd "$(dirname "$app")"
+        /usr/bin/zip -qry "$zip_path" "$(basename "$app")" \
+            -x "*/._*" "__MACOSX/*"
+    )
 }
 
 create_checksum() {
@@ -201,6 +198,10 @@ notarize_and_staple() {
     notary_zip_path="$1"
 
     if [ -z "${OPENREC_SIGN_IDENTITY:-}" ]; then
+        if [ "${OPENREC_NOTARIZE:-0}" = "1" ]; then
+            echo "OPENREC_NOTARIZE=1 requires OPENREC_SIGN_IDENTITY" >&2
+            exit 1
+        fi
         echo "Notarization: skipped; Developer ID signing identity not configured"
         return
     fi

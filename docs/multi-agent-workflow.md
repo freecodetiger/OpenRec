@@ -219,7 +219,7 @@ Exit criteria:
 - Real window recording verified on macOS hardware.
 - Mic recording verified on macOS hardware.
 - Save, discard, and save-panel cancellation verified.
-- README states that the current release artifact is source ZIP only, not a signed or notarized `.app`.
+- README states that current release artifacts include source ZIP and macOS app ZIP, and that the app ZIP is not signed or notarized unless credentials are supplied.
 - No release-blocking QA issues remain.
 
 ## PR Order
@@ -288,9 +288,9 @@ Required manual QA:
 - Microphone device switch and fallback.
 - Global hotkey start/stop and conflict behavior.
 - Temporary file cleanup.
-- Release tag source ZIP download and unzip.
-- SwiftPM developer launch path, or locally built unsigned app bundle launch path if one is produced outside CI.
-- Unsigned Gatekeeper documentation, with no claim that CI ships a signed or notarized app archive.
+- Release tag source ZIP and macOS app ZIP download and checksum verification.
+- SwiftPM developer launch path and packaged unsigned/ad-hoc app bundle launch path.
+- Unsigned Gatekeeper documentation, with no claim that CI ships a Developer ID signed or notarized app archive.
 - Offline behavior: no network requests.
 
 ## Review Model
@@ -377,7 +377,7 @@ Project context:
 OpenRec is a macOS 14+ SwiftUI menu bar screen recorder with an OpenRecCore Swift Package.
 MVP includes display/window recording, microphone audio, MP4/MOV, H.264/HEVC,
 25/30/60 fps presets, compact/standard/high quality presets, original source resolution,
-save panel, JSON settings, custom global start/stop hotkey, and fully offline behavior.
+save panel, JSON settings, saved hotkey registration, and fully offline behavior.
 
 Your responsibility:
 [owned modules and files]

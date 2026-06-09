@@ -10,7 +10,6 @@ OpenRec is an open-source macOS screen recorder intended as a lightweight QuickT
 - App window recording by choosing an application first, then one visible window from that application.
 - Microphone audio recording.
 - Menu bar start and stop controls.
-- User-configurable global start/stop hotkey.
 - Output formats: MP4 and MOV.
 - Video codecs: H.264 and HEVC/H.265.
 - Frame-rate presets: 25, 30, and 60 fps.
@@ -18,11 +17,11 @@ OpenRec is an open-source macOS screen recorder intended as a lightweight QuickT
 - Original source resolution only.
 - Save panel after recording; cancelling the save panel discards the temporary recording.
 
-Out of scope for the MVP: system audio, pause/resume, countdowns, recording history, save retry after cancellation, built-in editing, uploads, telemetry, automatic updates, Mac App Store distribution, and arbitrary resolution controls.
+Out of scope for the MVP: system audio, pause/resume, countdowns, recording history, save retry after cancellation, built-in editing, uploads, telemetry, automatic updates, Mac App Store distribution, user-configurable shortcut capture UI, and arbitrary resolution controls.
 
 ## Build and Test
 
-The current repository baseline is SwiftPM-buildable and SwiftPM-testable. It has a SwiftPM executable target for development, but the release pipeline does not yet produce a signed `.app` bundle, installer, or notarized archive.
+The current repository baseline is SwiftPM-buildable and SwiftPM-testable. It has a SwiftPM executable target for development, and the release pipeline can produce source and macOS app ZIP artifacts. The app artifact is not Developer ID signed or notarized unless signing credentials are supplied.
 
 ```sh
 swift build
@@ -112,6 +111,7 @@ Environment variables:
 - `OPENREC_ENTITLEMENTS`: optional entitlements plist path for `codesign`.
 - `OPENREC_NOTARY_PROFILE`: notarytool keychain profile.
 - `OPENREC_NOTARY_APPLE_ID`, `OPENREC_NOTARY_TEAM_ID`, `OPENREC_NOTARY_PASSWORD`: Apple ID notarization credentials used when no profile is supplied.
+- `OPENREC_NOTARIZE=1`: require notarization; packaging fails if Developer ID signing identity or notary credentials are missing.
 - `OPENREC_AD_HOC_SIGN=1`: ad-hoc sign when no Developer ID identity is configured.
 - `OPENREC_SKIP_CODESIGN=1`: leave the app unsigned even if signing-related variables are present.
 - `OPENREC_DRY_RUN=1`: print signing, notarization, and stapler commands without running them.

@@ -29,6 +29,7 @@ final class AppShellViewModel: ObservableObject {
     @Published private(set) var snapshot: AppShellSnapshot
     @Published private(set) var windowRecordingWorkflow: WindowRecordingWorkflowState = .idle
     @Published private(set) var displayRecordingWorkflow: DisplayRecordingWorkflowState = .idle
+    @Published private(set) var displaySelectionPresentationRequestCount = 0
     var onRecordingStoppedBeforeSave: (() -> Void)?
 
     private let adapter: AppShellAdapter
@@ -171,6 +172,12 @@ final class AppShellViewModel: ObservableObject {
             return
         }
 
+        let wasSelectingDisplay: Bool
+        if case .selectingDisplay = displayRecordingWorkflow {
+            wasSelectingDisplay = true
+        } else {
+            wasSelectingDisplay = false
+        }
         let previousMode = snapshot.mode
         let previousTargetID = snapshot.selectedTarget.id
         windowRecordingWorkflow = .idle
@@ -180,6 +187,9 @@ final class AppShellViewModel: ObservableObject {
         )
         if snapshot.mode != .display {
             snapshot = adapter.selectMode(.display)
+        }
+        if !wasSelectingDisplay {
+            displaySelectionPresentationRequestCount += 1
         }
     }
 

@@ -12,6 +12,7 @@ APP_ZIP_PATH="$DIST_DIR/OpenRec-$VERSION-macos.zip"
 CHECKSUM_PATH="$APP_ZIP_PATH.sha256"
 UNSIGNED_LOG="/tmp/openrec-package-release-unsigned.log"
 DRY_RUN_LOG="/tmp/openrec-package-release-dry-run.log"
+NOTARIZE_MISSING_IDENTITY_LOG="/tmp/openrec-package-release-notarize-missing-identity.log"
 
 create_fixture_app() {
     rm -rf "$FIXTURE_DIR"
@@ -76,6 +77,10 @@ fi
 
 /usr/bin/zipinfo -1 "$APP_ZIP_PATH" | grep -qx "OpenRec.app/Contents/Info.plist"
 /usr/bin/zipinfo -1 "$APP_ZIP_PATH" | grep -qx "OpenRec.app/Contents/MacOS/OpenRecApp"
+if /usr/bin/zipinfo -1 "$APP_ZIP_PATH" | grep -Eq '(^__MACOSX/|(^|/)\._)'; then
+    echo "macOS app ZIP must not include AppleDouble metadata" >&2
+    exit 1
+fi
 
 expected_checksum="$(shasum -a 256 "$APP_ZIP_PATH" | awk '{print $1}')"
 actual_checksum="$(awk '{print $1}' "$CHECKSUM_PATH")"
@@ -105,7 +110,17 @@ assert_contains "$DRY_RUN_LOG" "--wait"
 assert_contains "$DRY_RUN_LOG" "DRY RUN: xcrun stapler staple"
 assert_not_contains "$DRY_RUN_LOG" "app-password-secret"
 
+if OPENREC_APP_PATH="$FIXTURE_APP" \
+    OPENREC_RELEASE_VERSION="$VERSION" \
+    GITHUB_REF_NAME="$VERSION" \
+    OPENREC_NOTARIZE=1 \
+    "$ROOT_DIR/scripts/package-release.sh" >"$NOTARIZE_MISSING_IDENTITY_LOG" 2>&1; then
+    echo "OPENREC_NOTARIZE=1 must fail without Developer ID signing identity" >&2
+    exit 1
+fi
+assert_contains "$NOTARIZE_MISSING_IDENTITY_LOG" "OPENREC_NOTARIZE=1 requires OPENREC_SIGN_IDENTITY"
+
 rm -rf "$DIST_DIR"
-rm -f "$UNSIGNED_LOG" "$DRY_RUN_LOG"
+rm -f "$UNSIGNED_LOG" "$DRY_RUN_LOG" "$NOTARIZE_MISSING_IDENTITY_LOG"
 
 echo "package-release.sh test passed"

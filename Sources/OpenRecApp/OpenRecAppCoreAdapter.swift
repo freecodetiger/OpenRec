@@ -367,7 +367,17 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
     private func normalizedSettings(_ settings: RecordingSettings) -> RecordingSettings {
         var normalized = settings
         normalized.defaultMode = .display
+        normalized.microphoneDeviceID = normalizedMicrophoneDeviceID(settings.microphoneDeviceID)
         return normalized
+    }
+
+    private func normalizedMicrophoneDeviceID(_ deviceID: String?) -> String? {
+        let devices = audioDeviceProvider.microphoneDevices()
+        if let deviceID, devices.contains(where: { $0.id == deviceID }) {
+            return deviceID
+        }
+
+        return audioDeviceProvider.defaultMicrophoneDevice()?.id
     }
 
     private func selectedMode(
