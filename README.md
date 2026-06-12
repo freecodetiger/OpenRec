@@ -29,6 +29,8 @@ swift build
 swift test
 ```
 
+Hosted GitHub Actions release jobs use `scripts/ci-swift-test.sh`, which runs the Swift test suite while skipping the AVAssetWriter encoding integration tests that are kept in the normal local `swift test` path because they can hang on headless macOS runners.
+
 For local app permission testing, launch the development `.app` wrapper with:
 
 ```sh

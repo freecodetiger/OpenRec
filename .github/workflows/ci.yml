@@ -16,6 +16,7 @@ jobs:
   swiftpm:
     name: SwiftPM
     runs-on: macos-latest
+    timeout-minutes: 45
 
     steps:
       - name: Checkout
@@ -31,25 +32,33 @@ jobs:
         run: swift build -c release
 
       - name: Test SwiftPM package
-        run: swift test
+        timeout-minutes: 15
+        run: scripts/ci-swift-test.sh
 
       - name: Check whitespace
         run: git diff --check
 
       - name: Smoke test release artifact
+        timeout-minutes: 20
+        env:
+          OPENREC_RELEASE_SMOKE_COMMAND: scripts/ci-swift-test.sh
         run: scripts/test-release-artifact.sh
 
       - name: Test release packaging script
+        timeout-minutes: 10
         run: scripts/test-package-release.sh
 
       - name: Test production app bundle script
+        timeout-minutes: 10
         run: scripts/test-package-app.sh
 
       - name: Test development app bundle script
+        timeout-minutes: 10
         run: scripts/test-launch-dev-app.sh
 
       - name: Package release artifacts
         if: startsWith(github.ref, 'refs/tags/')
+        timeout-minutes: 20
         env:
           OPENREC_SIGN_IDENTITY: ${{ secrets.OPENREC_SIGN_IDENTITY }}
           OPENREC_ENTITLEMENTS: ${{ secrets.OPENREC_ENTITLEMENTS }}
