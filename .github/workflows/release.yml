@@ -177,6 +177,7 @@ jobs:
         shell: bash
         env:
           OPENREC_SIGN_IDENTITY: ${{ secrets.OPENREC_SIGN_IDENTITY }}
+          OPENREC_RELEASE_SMOKE_COMMAND: scripts/ci-swift-test.sh
         run: |
           set -euo pipefail
 
