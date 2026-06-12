@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import OpenRecCore
 
@@ -8,9 +9,13 @@ struct PreferencesView: View {
     var onOpenPermissionSettings: (PermissionKind) -> Void = { _ in }
     var onRequestPermission: (PermissionKind) -> Void = { _ in }
     var onRefreshPermissions: () -> Void = {}
+    var onRefreshAudioLevel: () -> Void = {}
 
     @State private var draftSettings: RecordingSettings
     @State private var selectedSection: PreferenceSection = .general
+    @State private var isRecordingShortcut = false
+    @State private var shortcutCaptureMessage: String?
+    private let audioLevelTimer = Timer.publish(every: 0.1, on: .main, in: .common).autoconnect()
 
     private var strings: OpenRecLocalization {
         OpenRecLocalization(snapshot.appLanguage)
@@ -29,7 +34,8 @@ struct PreferencesView: View {
         onLanguageChange: @escaping (AppLanguage) -> Void = { _ in },
         onOpenPermissionSettings: @escaping (PermissionKind) -> Void = { _ in },
         onRequestPermission: @escaping (PermissionKind) -> Void = { _ in },
-        onRefreshPermissions: @escaping () -> Void = {}
+        onRefreshPermissions: @escaping () -> Void = {},
+        onRefreshAudioLevel: @escaping () -> Void = {}
     ) {
         self.snapshot = snapshot
         self.onSettingsChange = onSettingsChange
@@ -37,6 +43,7 @@ struct PreferencesView: View {
         self.onOpenPermissionSettings = onOpenPermissionSettings
         self.onRequestPermission = onRequestPermission
         self.onRefreshPermissions = onRefreshPermissions
+        self.onRefreshAudioLevel = onRefreshAudioLevel
         _draftSettings = State(initialValue: snapshot.settings)
     }
 
@@ -60,6 +67,10 @@ struct PreferencesView: View {
         .frame(minWidth: 720, minHeight: 520)
         .onChange(of: snapshot) { _, snapshot in
             draftSettings = snapshot.settings
+        }
+        .onReceive(audioLevelTimer) { _ in
+            guard snapshot.status == .recording else { return }
+            onRefreshAudioLevel()
         }
     }
 
@@ -174,6 +185,13 @@ struct PreferencesView: View {
                     .labelsHidden()
                     .frame(width: 220)
                 }
+                MicrophoneLevelIndicator(
+                    presentation: MicrophoneLevelPresentation.make(
+                        snapshot: snapshot,
+                        strings: strings
+                    )
+                )
+                .padding(.horizontal, 2)
                 Divider()
                 preferenceRow(title: strings.audioQuality, detail: strings.audioEncodingDetail) {
                     Picker(strings.audioQuality, selection: settingBinding(\.audioPreset)) {
@@ -188,9 +206,27 @@ struct PreferencesView: View {
             }
         case .shortcuts:
             settingsGroup {
-                preferenceRow(title: strings.globalShortcut, detail: snapshot.settings.globalHotkey.localizedLabel(strings)) {
-                    Button(strings.recordShortcut) {}
-                        .disabled(true)
+                let shortcutPresentation = ShortcutPreferencePresentation.make(
+                    hotkey: draftSettings.globalHotkey,
+                    strings: strings
+                )
+                preferenceRow(title: strings.globalShortcut, detail: shortcutPresentation.detailText) {
+                    HStack(spacing: 8) {
+                        Button(shortcutPresentation.primaryActionTitle) {
+                            isRecordingShortcut = true
+                            shortcutCaptureMessage = nil
+                        }
+                        .disabled(!shortcutPresentation.isPrimaryActionEnabled)
+                        if shortcutPresentation.showsClearAction {
+                            Button(strings.clearShortcut) {
+                                updateGlobalHotkey(nil)
+                            }
+                        }
+                    }
+                }
+                if isRecordingShortcut {
+                    Divider()
+                    shortcutCapturePanel
                 }
             }
         case .permissions:
@@ -275,6 +311,42 @@ struct PreferencesView: View {
         .foregroundStyle(.secondary)
     }
 
+    private var shortcutCapturePanel: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "keyboard")
+                .foregroundStyle(Color.accentColor)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(strings.pressShortcut)
+                    .font(.body.weight(.medium))
+                Text(shortcutCaptureMessage ?? strings.shortcutCaptureHint)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button(strings.cancel) {
+                isRecordingShortcut = false
+                shortcutCaptureMessage = nil
+            }
+            .keyboardShortcut(.cancelAction)
+            HotkeyCaptureView(
+                onCapture: { hotkey in
+                    guard hotkey.modifiers.rawValue != 0 else {
+                        shortcutCaptureMessage = strings.shortcutRequiresModifier
+                        return
+                    }
+                    updateGlobalHotkey(hotkey)
+                },
+                onCancel: {
+                    isRecordingShortcut = false
+                    shortcutCaptureMessage = nil
+                }
+            )
+            .frame(width: 1, height: 1)
+            .opacity(0.01)
+        }
+        .padding(.vertical, 4)
+    }
+
     private var languageBinding: Binding<AppLanguage> {
         Binding(
             get: { snapshot.appLanguage },
@@ -320,6 +392,87 @@ struct PreferencesView: View {
         guard settings != draftSettings else { return }
         draftSettings = settings
         onSettingsChange(settings)
+    }
+
+    private func updateGlobalHotkey(_ hotkey: Hotkey?) {
+        isRecordingShortcut = false
+        shortcutCaptureMessage = nil
+        updateSettings { settings in
+            settings.globalHotkey = hotkey
+        }
+    }
+}
+
+private struct HotkeyCaptureView: NSViewRepresentable {
+    var onCapture: (Hotkey) -> Void
+    var onCancel: () -> Void
+
+    func makeNSView(context: Context) -> HotkeyCaptureNSView {
+        HotkeyCaptureNSView(onCapture: onCapture, onCancel: onCancel)
+    }
+
+    func updateNSView(_ nsView: HotkeyCaptureNSView, context: Context) {
+        nsView.onCapture = onCapture
+        nsView.onCancel = onCancel
+        DispatchQueue.main.async {
+            nsView.window?.makeFirstResponder(nsView)
+        }
+    }
+}
+
+private final class HotkeyCaptureNSView: NSView {
+    var onCapture: (Hotkey) -> Void
+    var onCancel: () -> Void
+
+    init(onCapture: @escaping (Hotkey) -> Void, onCancel: @escaping () -> Void) {
+        self.onCapture = onCapture
+        self.onCancel = onCancel
+        super.init(frame: .zero)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override var acceptsFirstResponder: Bool { true }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.window?.makeFirstResponder(self)
+        }
+    }
+
+    override func keyDown(with event: NSEvent) {
+        if event.keyCode == 53 {
+            onCancel()
+            return
+        }
+
+        onCapture(Hotkey(
+            keyCode: event.keyCode,
+            modifiers: HotkeyModifiers(event.modifierFlags)
+        ))
+    }
+}
+
+private extension HotkeyModifiers {
+    init(_ modifierFlags: NSEvent.ModifierFlags) {
+        var modifiers: HotkeyModifiers = []
+        if modifierFlags.contains(.command) {
+            modifiers.insert(.command)
+        }
+        if modifierFlags.contains(.option) {
+            modifiers.insert(.option)
+        }
+        if modifierFlags.contains(.control) {
+            modifiers.insert(.control)
+        }
+        if modifierFlags.contains(.shift) {
+            modifiers.insert(.shift)
+        }
+        self = modifiers
     }
 }
 
@@ -375,11 +528,5 @@ private enum PreferenceSection: String, CaseIterable, Identifiable {
         case .permissions:
             return strings.text("macOS permissions required by OpenRec.", "OpenRec 所需的 macOS 权限。")
         }
-    }
-}
-
-private extension Optional where Wrapped == Hotkey {
-    func localizedLabel(_ strings: OpenRecLocalization) -> String {
-        self == nil ? strings.notConfigured : strings.configured
     }
 }

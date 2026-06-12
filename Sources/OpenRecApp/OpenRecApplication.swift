@@ -87,6 +87,11 @@ struct OpenRecApplication: App {
             statusItemController.closePopover()
             openWindow(id: "source-selection")
         }
+        .onChange(of: viewModel.windowSelectionPresentationRequestCount) { oldCount, newCount in
+            guard newCount > oldCount else { return }
+            statusItemController.closePopover()
+            windowRecordingWorkflowCoordinator.presentWindowSelectionForCurrentWorkflow()
+        }
 
         Window("Preferences", id: "preferences") {
             PreferencesView(
@@ -95,7 +100,8 @@ struct OpenRecApplication: App {
                 onLanguageChange: viewModel.updateAppLanguage,
                 onOpenPermissionSettings: viewModel.openPermissionSettings,
                 onRequestPermission: viewModel.requestPermission,
-                onRefreshPermissions: viewModel.refreshPermissions
+                onRefreshPermissions: viewModel.refreshPermissions,
+                onRefreshAudioLevel: viewModel.refreshAudioLevel
             )
         }
         .defaultSize(width: 760, height: 560)

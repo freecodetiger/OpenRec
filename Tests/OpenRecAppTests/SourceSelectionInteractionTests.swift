@@ -166,8 +166,16 @@ import Testing
 }
 
 @MainActor
-@Test func windowSelectionOverlayPointerLocationClearsHighlightOutsideWindows() {
-    let target = SourceTargetOption(
+@Test func windowSelectionOverlayPointerLocationFallsBackToDisplayOutsideWindows() {
+    let display = SourceTargetOption(
+        id: "display-1",
+        mode: .display,
+        source: .display(DisplayID(rawValue: 1)),
+        title: "Built-in Display",
+        subtitle: "Display recording target",
+        screenFrame: CGRect(x: 0, y: 0, width: 1000, height: 600)
+    )
+    let window = SourceTargetOption(
         id: "window-1",
         mode: .window,
         source: .window(WindowID(rawValue: 1)),
@@ -175,7 +183,7 @@ import Testing
         subtitle: "Window recording target",
         screenFrame: CGRect(x: 100, y: 100, width: 300, height: 200)
     )
-    var overlay = WindowSelectionOverlayModel(targets: [target])
+    var overlay = WindowSelectionOverlayModel(targets: [display, window])
 
     overlay.movePointer(
         to: CGPoint(x: 50, y: 50),
@@ -183,7 +191,7 @@ import Testing
         overlayScreenFrame: CGRect(x: 0, y: 0, width: 1000, height: 600)
     )
 
-    #expect(overlay.highlightedTargetID == nil)
+    #expect(overlay.highlightedTargetID == "display-1")
 }
 
 @MainActor
@@ -284,15 +292,44 @@ import Testing
 }
 
 @MainActor
-@Test func windowSelectionOverlayIgnoresDisplayTargets() {
-    var overlay = WindowSelectionOverlayModel(targets: AppShellSnapshot.ready.availableTargets)
+@Test func windowSelectionOverlayAcceptsDisplayTargetsAsFallbackSelections() {
+    let display = SourceTargetOption(
+        id: "display-1",
+        mode: .display,
+        source: .display(DisplayID(rawValue: 1)),
+        title: "Built-in Display",
+        subtitle: "Display recording target",
+        screenFrame: CGRect(x: 0, y: 0, width: 1000, height: 600)
+    )
+    var overlay = WindowSelectionOverlayModel(targets: [display])
 
     overlay.hover(targetID: "display-1")
     let selectedTargetID = overlay.click(targetID: "display-1")
 
-    #expect(overlay.targets.map(\.id) == ["window-42"])
-    #expect(overlay.highlightedTargetID == nil)
-    #expect(selectedTargetID == nil)
+    #expect(overlay.targets.map(\.id) == ["display-1"])
+    #expect(overlay.highlightedTargetID == "display-1")
+    #expect(selectedTargetID == "display-1")
+}
+
+@MainActor
+@Test func windowSelectionOverlayFallsBackToDisplayWhenFilteredWindowIsUnavailable() {
+    let display = SourceTargetOption(
+        id: "display-1",
+        mode: .display,
+        source: .display(DisplayID(rawValue: 1)),
+        title: "Built-in Display",
+        subtitle: "Display recording target",
+        screenFrame: CGRect(x: 0, y: 0, width: 1000, height: 600)
+    )
+    var overlay = WindowSelectionOverlayModel(targets: [display])
+
+    overlay.movePointer(
+        to: CGPoint(x: 300, y: 240),
+        in: CGSize(width: 1000, height: 600),
+        overlayScreenFrame: CGRect(x: 0, y: 0, width: 1000, height: 600)
+    )
+
+    #expect(overlay.clickHighlightedTarget() == "display-1")
 }
 
 @MainActor

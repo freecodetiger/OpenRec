@@ -10,8 +10,22 @@ public protocol MicrophoneCaptureSession: AnyObject, Sendable {
 public protocol MicrophoneCaptureSessionFactory: Sendable {
     func startMicrophoneCapture(
         deviceID: String,
-        writer: any RecordingOutputWriter
+        writer: any RecordingOutputWriter,
+        audioLevelMonitor: AudioLevelMonitor?
     ) throws -> any MicrophoneCaptureSession
+}
+
+public extension MicrophoneCaptureSessionFactory {
+    func startMicrophoneCapture(
+        deviceID: String,
+        writer: any RecordingOutputWriter
+    ) throws -> any MicrophoneCaptureSession {
+        try startMicrophoneCapture(
+            deviceID: deviceID,
+            writer: writer,
+            audioLevelMonitor: nil
+        )
+    }
 }
 
 public struct DisabledMicrophoneCaptureSessionFactory: MicrophoneCaptureSessionFactory {
@@ -19,7 +33,8 @@ public struct DisabledMicrophoneCaptureSessionFactory: MicrophoneCaptureSessionF
 
     public func startMicrophoneCapture(
         deviceID: String,
-        writer: any RecordingOutputWriter
+        writer: any RecordingOutputWriter,
+        audioLevelMonitor: AudioLevelMonitor?
     ) throws -> any MicrophoneCaptureSession {
         throw OpenRecError.microphoneUnavailable(deviceID)
     }
@@ -31,7 +46,8 @@ public struct AVFoundationMicrophoneCaptureSessionFactory: MicrophoneCaptureSess
 
     public func startMicrophoneCapture(
         deviceID: String,
-        writer: any RecordingOutputWriter
+        writer: any RecordingOutputWriter,
+        audioLevelMonitor: AudioLevelMonitor?
     ) throws -> any MicrophoneCaptureSession {
         guard let device = AVCaptureDevice.devices(for: .audio).first(where: { $0.uniqueID == deviceID }) else {
             throw OpenRecError.microphoneUnavailable(deviceID)
@@ -47,7 +63,10 @@ public struct AVFoundationMicrophoneCaptureSessionFactory: MicrophoneCaptureSess
 
             let output = AVCaptureAudioDataOutput()
             output.audioSettings = AVFoundationMicrophoneCaptureOutputSettings().audioSettings
-            let delegate = AVFoundationMicrophoneCaptureOutput(writer: writer)
+            let delegate = AVFoundationMicrophoneCaptureOutput(
+                writer: writer,
+                audioLevelMonitor: audioLevelMonitor
+            )
             output.setSampleBufferDelegate(
                 delegate,
                 queue: DispatchQueue(label: "openrec.avfoundation.microphone")
@@ -80,11 +99,16 @@ struct AVFoundationMicrophoneCaptureOutputSettings {
 
 private final class AVFoundationMicrophoneCaptureOutput: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate, @unchecked Sendable {
     private let writer: any RecordingOutputWriter
+    private let audioLevelMonitor: AudioLevelMonitor?
     private let lock = NSLock()
     private var lastError: OpenRecError?
 
-    init(writer: any RecordingOutputWriter) {
+    init(
+        writer: any RecordingOutputWriter,
+        audioLevelMonitor: AudioLevelMonitor?
+    ) {
         self.writer = writer
+        self.audioLevelMonitor = audioLevelMonitor
     }
 
     func captureOutput(
@@ -92,6 +116,8 @@ private final class AVFoundationMicrophoneCaptureOutput: NSObject, AVCaptureAudi
         didOutput sampleBuffer: CMSampleBuffer,
         from connection: AVCaptureConnection
     ) {
+        updateAudioLevel(from: sampleBuffer)
+
         do {
             try writer.appendAudioSampleBuffer(sampleBuffer)
         } catch let error as OpenRecError {
@@ -113,6 +139,15 @@ private final class AVFoundationMicrophoneCaptureOutput: NSObject, AVCaptureAudi
         lock.withLock {
             lastError = error
         }
+    }
+
+    private func updateAudioLevel(from sampleBuffer: CMSampleBuffer) {
+        guard let audioLevelMonitor,
+              let snapshot = AudioSampleBufferLevelReader.measure(sampleBuffer) else {
+            return
+        }
+
+        audioLevelMonitor.update(snapshot)
     }
 }
 

@@ -99,6 +99,95 @@ import Foundation
     #expect(strings.permissionStatus(.granted) == "已授权")
 }
 
+@Test func microphoneLevelPresentationShowsSelectedMicrophoneAndDBFS() {
+    var snapshot = AppShellSnapshot.recording
+    snapshot.audioLevel = AudioLevelSnapshot(
+        rmsDBFS: -18.4,
+        peakDBFS: -6.2,
+        normalizedLevel: 0.77,
+        state: .normal
+    )
+
+    let presentation = MicrophoneLevelPresentation.make(
+        snapshot: snapshot,
+        strings: OpenRecLocalization(.english)
+    )
+
+    #expect(presentation.microphoneName == "Studio Microphone")
+    #expect(presentation.primaryText == "Studio Microphone")
+    #expect(presentation.detailText == "RMS -18.4 dBFS · Peak -6.2 dBFS")
+    #expect(presentation.stateText == "Normal input")
+    #expect(presentation.normalizedLevel == 0.77)
+    #expect(presentation.tint == .normal)
+}
+
+@Test func microphoneLevelPresentationLocalizesInactiveAndClippingStates() {
+    var inactiveSnapshot = AppShellSnapshot.ready
+    inactiveSnapshot.appLanguage = .simplifiedChinese
+
+    let inactive = MicrophoneLevelPresentation.make(
+        snapshot: inactiveSnapshot,
+        strings: OpenRecLocalization(.simplifiedChinese)
+    )
+    #expect(inactive.detailText == "等待录制音频")
+    #expect(inactive.stateText == "未监听")
+
+    var clippingSnapshot = AppShellSnapshot.recording
+    clippingSnapshot.audioLevel = AudioLevelSnapshot(
+        rmsDBFS: -3.2,
+        peakDBFS: -0.4,
+        normalizedLevel: 0.96,
+        state: .clippingRisk
+    )
+
+    let clipping = MicrophoneLevelPresentation.make(
+        snapshot: clippingSnapshot,
+        strings: OpenRecLocalization(.english)
+    )
+    #expect(clipping.stateText == "Clipping risk")
+    #expect(clipping.tint == .critical)
+}
+
+@MainActor
+@Test func viewModelRefreshAudioLevelUpdatesSnapshotWhileKeepingElapsedTime() {
+    let adapter = MockAppCoreAdapter(initialSnapshot: .ready)
+    var now = Date(timeIntervalSince1970: 100)
+    let viewModel = AppShellViewModel(adapter: adapter, now: { now })
+
+    viewModel.startRecording()
+    now = Date(timeIntervalSince1970: 105)
+    adapter.audioLevelSnapshot = AudioLevelSnapshot(
+        rmsDBFS: -12,
+        peakDBFS: -5,
+        normalizedLevel: 0.85,
+        state: .normal
+    )
+
+    viewModel.refreshAudioLevel()
+
+    #expect(adapter.refreshAudioLevelCallCount == 1)
+    #expect(viewModel.snapshot.audioLevel.state == .normal)
+    #expect(viewModel.snapshot.elapsedTimeText == "00:05")
+}
+
+@MainActor
+@Test func viewModelRefreshAudioLevelUpdatesReadySnapshotForContinuousPreview() {
+    let adapter = MockAppCoreAdapter(initialSnapshot: .ready)
+    let viewModel = AppShellViewModel(adapter: adapter)
+    adapter.audioLevelSnapshot = AudioLevelSnapshot(
+        rmsDBFS: -22,
+        peakDBFS: -12,
+        normalizedLevel: 0.72,
+        state: .normal
+    )
+
+    viewModel.refreshAudioLevel()
+
+    #expect(adapter.refreshAudioLevelCallCount == 1)
+    #expect(viewModel.snapshot.status == .ready)
+    #expect(viewModel.snapshot.audioLevel.state == .normal)
+}
+
 @Test func localizationNamesApplicationWindowWorkflowWithoutPromisingWholeAppCapture() {
     let english = OpenRecLocalization(.english)
     let chinese = OpenRecLocalization(.simplifiedChinese)
@@ -111,6 +200,43 @@ import Foundation
     #expect(chinese.chooseApplicationTitle == "选择应用窗口")
     #expect(chinese.noRecordableApplicationsTitle == "没有可录制应用窗口")
     #expect(chinese.noRecordableApplicationsDetail == "打开一个应用窗口后再尝试应用窗口录制。")
+}
+
+@Test func hotkeyLabelsShowReadableModifierAndKeySymbols() {
+    let hotkey = Hotkey(keyCode: 15, modifiers: [.command, .shift])
+
+    #expect(hotkey.localizedLabel == "⌘⇧R")
+    #expect(Optional<Hotkey>.none.localizedLabel(OpenRecLocalization(.english)) == "Not configured")
+}
+
+@Test func shortcutPreferencePresentationKeepsUnconfiguredShortcutActionEnabled() {
+    let english = ShortcutPreferencePresentation.make(
+        hotkey: nil,
+        strings: OpenRecLocalization(.english)
+    )
+    let chinese = ShortcutPreferencePresentation.make(
+        hotkey: nil,
+        strings: OpenRecLocalization(.simplifiedChinese)
+    )
+
+    #expect(english.detailText == "Not configured")
+    #expect(english.primaryActionTitle == "Set Shortcut")
+    #expect(english.isPrimaryActionEnabled)
+    #expect(chinese.detailText == "未配置")
+    #expect(chinese.primaryActionTitle == "设置快捷键")
+    #expect(chinese.isPrimaryActionEnabled)
+}
+
+@Test func shortcutPreferencePresentationShowsChangeAndClearForConfiguredShortcut() {
+    let hotkey = Hotkey(keyCode: 15, modifiers: [.command, .shift])
+    let presentation = ShortcutPreferencePresentation.make(
+        hotkey: hotkey,
+        strings: OpenRecLocalization(.english)
+    )
+
+    #expect(presentation.detailText == "⌘⇧R")
+    #expect(presentation.primaryActionTitle == "Change Shortcut")
+    #expect(presentation.showsClearAction)
 }
 
 @Test func recordingParameterSummaryShowsCurrentBitrateAndParameters() {
@@ -235,7 +361,7 @@ import Foundation
 }
 
 @MainActor
-@Test func viewModelHotkeyTriggerStartsAndStopsRecording() async {
+@Test func viewModelHotkeyTriggerRequestsWindowSelectionAndCanStopRecording() async throws {
     let hotkey = Hotkey(keyCode: 49, modifiers: [.command, .shift])
     let registry = InMemoryHotkeyRegistry()
     var snapshot = AppShellSnapshot.ready
@@ -249,7 +375,15 @@ import Foundation
 
     viewModel.startHotkeyMonitoring()
     registry.trigger(hotkey)
-    await Task.yield()
+    try await Task.sleep(for: .milliseconds(50))
+
+    #expect(viewModel.windowRecordingWorkflow == .selectingWindow(previousMode: .display, previousTargetID: "display-1"))
+    #expect(viewModel.windowSelectionPresentationRequestCount == 1)
+    #expect(adapter.startRecordingCallCount == 0)
+    #expect(viewModel.snapshot.status == .ready)
+
+    viewModel.selectWindowForRecording(targetID: "window-42")
+    viewModel.startConfiguredWindowRecording()
 
     #expect(viewModel.snapshot.status == .recording)
     #expect(adapter.startRecordingCallCount == 1)
@@ -262,7 +396,7 @@ import Foundation
 }
 
 @MainActor
-@Test func viewModelHotkeyTriggerRequiresDisplaySelectionWhenMultipleDisplaysAreAvailable() async {
+@Test func viewModelHotkeyTriggerDefaultsToWindowSelectionWhenMultipleDisplaysAreAvailable() async throws {
     let hotkey = Hotkey(keyCode: 49, modifiers: [.command, .shift])
     let registry = InMemoryHotkeyRegistry()
     let adapter = MockAppCoreAdapter(
@@ -273,12 +407,57 @@ import Foundation
 
     viewModel.startHotkeyMonitoring()
     registry.trigger(hotkey)
-    await Task.yield()
+    try await Task.sleep(for: .milliseconds(50))
 
-    #expect(viewModel.displayRecordingWorkflow == .selectingDisplay(previousMode: .display, previousTargetID: "display-1"))
-    #expect(viewModel.displaySelectionPresentationRequestCount == 1)
+    #expect(viewModel.windowRecordingWorkflow == .selectingWindow(previousMode: .display, previousTargetID: "display-1"))
+    #expect(viewModel.windowSelectionPresentationRequestCount == 1)
+    #expect(viewModel.displayRecordingWorkflow == .idle)
+    #expect(viewModel.displaySelectionPresentationRequestCount == 0)
     #expect(adapter.startRecordingCallCount == 0)
     #expect(viewModel.snapshot.status == .ready)
+}
+
+@MainActor
+@Test func viewModelHotkeyRefreshesWindowFramesBeforeRequestingSelection() async throws {
+    let hotkey = Hotkey(keyCode: 49, modifiers: [.command, .shift])
+    let registry = InMemoryHotkeyRegistry()
+    var staleSnapshot = AppShellSnapshot.ready
+    staleSnapshot.availableTargets = [
+        AppShellSnapshot.displayTarget,
+        SourceTargetOption(
+            id: "window-42",
+            mode: .window,
+            source: .window(WindowID(rawValue: 42)),
+            title: "Terminal - Old",
+            subtitle: "Window recording target",
+            screenFrame: CGRect(x: 100, y: 100, width: 640, height: 400)
+        )
+    ]
+    var refreshedSnapshot = staleSnapshot
+    refreshedSnapshot.availableTargets[1] = SourceTargetOption(
+        id: "window-42",
+        mode: .window,
+        source: .window(WindowID(rawValue: 42)),
+        title: "Terminal - Current",
+        subtitle: "Window recording target",
+        screenFrame: CGRect(x: 200, y: 80, width: 1200, height: 700)
+    )
+    let adapter = MockAppCoreAdapter(
+        initialSnapshot: staleSnapshot,
+        hotkeyManager: HotkeyManager(registry: registry, savedHotkey: hotkey)
+    )
+    adapter.permissionRefreshSnapshot = refreshedSnapshot
+    let viewModel = AppShellViewModel(adapter: adapter)
+
+    viewModel.startHotkeyMonitoring()
+    registry.trigger(hotkey)
+    try await Task.sleep(for: .milliseconds(50))
+
+    let selectedWindow = viewModel.snapshot.availableTargets.first { $0.id == "window-42" }
+    #expect(adapter.refreshCallCount == 1)
+    #expect(viewModel.windowRecordingWorkflow == .selectingWindow(previousMode: .display, previousTargetID: "display-1"))
+    #expect(selectedWindow?.title == "Terminal - Current")
+    #expect(selectedWindow?.screenFrame == CGRect(x: 200, y: 80, width: 1200, height: 700))
 }
 
 @MainActor
@@ -519,6 +698,18 @@ import Foundation
 }
 
 @MainActor
+@Test func requestingWindowWorkflowDoesNotRequestDuplicateSelectionOverlays() {
+    let adapter = MockAppCoreAdapter(initialSnapshot: .ready)
+    let viewModel = AppShellViewModel(adapter: adapter)
+
+    viewModel.requestWindowRecordingWorkflowPresentation()
+    viewModel.requestWindowRecordingWorkflowPresentation()
+
+    #expect(viewModel.windowRecordingWorkflow == .selectingWindow(previousMode: .display, previousTargetID: "display-1"))
+    #expect(viewModel.windowSelectionPresentationRequestCount == 1)
+}
+
+@MainActor
 @Test func selectingWindowTargetAppliesWindowModeAndShowsControlBarState() {
     let adapter = MockAppCoreAdapter(initialSnapshot: .ready)
     let viewModel = AppShellViewModel(adapter: adapter)
@@ -530,6 +721,23 @@ import Foundation
     #expect(adapter.selectTargetIDs == ["window-42"])
     #expect(viewModel.snapshot.mode == .window)
     #expect(viewModel.windowRecordingWorkflow == .configuringWindow(previousMode: .display, previousTargetID: "display-1", selectedTargetID: "window-42"))
+}
+
+@MainActor
+@Test func selectingDisplayFallbackInWindowWorkflowAppliesDisplayModeAndShowsControlBarState() {
+    var snapshot = AppShellSnapshot.ready
+    snapshot.mode = .window
+    snapshot.selectedTarget = AppShellSnapshot.windowTarget
+    let adapter = MockAppCoreAdapter(initialSnapshot: snapshot)
+    let viewModel = AppShellViewModel(adapter: adapter)
+
+    _ = viewModel.requestWindowRecordingWorkflow()
+    viewModel.selectWindowForRecording(targetID: "display-1")
+
+    #expect(adapter.selectModes == [.display])
+    #expect(adapter.selectTargetIDs == ["display-1"])
+    #expect(viewModel.snapshot.mode == .display)
+    #expect(viewModel.windowRecordingWorkflow == .configuringWindow(previousMode: .window, previousTargetID: "window-42", selectedTargetID: "display-1"))
 }
 
 @MainActor
@@ -864,6 +1072,132 @@ import Foundation
 }
 
 @MainActor
+@Test func productionAdapterStartsContinuousAudioPreviewWhenPermissionsAllow() async throws {
+    let previewFactory = SpyAudioLevelPreviewSessionFactory()
+    let adapter = OpenRecAppCoreAdapter(
+        settingsStore: SettingsStore(settingsDirectory: temporarySettingsDirectory()),
+        captureSourceProvider: InMemoryCaptureSourceProvider(
+            displays: [
+                DisplaySourceMetadata(
+                    id: DisplayID(rawValue: 10),
+                    name: "Main Display",
+                    pixelSize: CGSize(width: 3024, height: 1964),
+                    isAvailable: true
+                )
+            ],
+            windows: []
+        ),
+        audioDeviceProvider: InMemoryAudioDeviceProvider(devices: [
+            MicrophoneDevice(id: "mic-1", name: "Built-in Microphone", isDefault: true)
+        ]),
+        permissionChecker: PermissionChecker(provider: InMemoryPermissionStatusProvider(
+            statuses: Dictionary(uniqueKeysWithValues: PermissionKind.allCases.map { ($0, .granted) })
+        )),
+        hotkeyManager: HotkeyManager(registry: InMemoryHotkeyRegistry()),
+        audioLevelPreviewSessionFactory: previewFactory
+    )
+
+    let snapshot = await adapter.refresh()
+
+    #expect(snapshot.status == .ready)
+    #expect(previewFactory.startedDeviceIDs == ["mic-1"])
+}
+
+@MainActor
+@Test func productionAdapterRestartsContinuousAudioPreviewWhenMicrophoneChanges() async throws {
+    let previewFactory = SpyAudioLevelPreviewSessionFactory()
+    let adapter = OpenRecAppCoreAdapter(
+        settingsStore: SettingsStore(settingsDirectory: temporarySettingsDirectory()),
+        captureSourceProvider: InMemoryCaptureSourceProvider(
+            displays: [
+                DisplaySourceMetadata(
+                    id: DisplayID(rawValue: 10),
+                    name: "Main Display",
+                    pixelSize: CGSize(width: 3024, height: 1964),
+                    isAvailable: true
+                )
+            ],
+            windows: []
+        ),
+        audioDeviceProvider: InMemoryAudioDeviceProvider(devices: [
+            MicrophoneDevice(id: "mic-1", name: "Built-in Microphone", isDefault: true),
+            MicrophoneDevice(id: "mic-2", name: "Studio Microphone", isDefault: false)
+        ]),
+        permissionChecker: PermissionChecker(provider: InMemoryPermissionStatusProvider(
+            statuses: Dictionary(uniqueKeysWithValues: PermissionKind.allCases.map { ($0, .granted) })
+        )),
+        hotkeyManager: HotkeyManager(registry: InMemoryHotkeyRegistry()),
+        audioLevelPreviewSessionFactory: previewFactory
+    )
+
+    _ = await adapter.refresh()
+    _ = adapter.selectMicrophone(id: "mic-2")
+
+    #expect(previewFactory.startedDeviceIDs == ["mic-1", "mic-2"])
+    #expect(previewFactory.sessions.first?.didStop == true)
+}
+
+@MainActor
+@Test func productionAdapterDoesNotStartContinuousAudioPreviewWithoutMicrophonePermission() async throws {
+    let previewFactory = SpyAudioLevelPreviewSessionFactory()
+    let adapter = OpenRecAppCoreAdapter(
+        settingsStore: SettingsStore(settingsDirectory: temporarySettingsDirectory()),
+        captureSourceProvider: InMemoryCaptureSourceProvider(displays: [], windows: []),
+        audioDeviceProvider: InMemoryAudioDeviceProvider(devices: [
+            MicrophoneDevice(id: "mic-1", name: "Built-in Microphone", isDefault: true)
+        ]),
+        permissionChecker: PermissionChecker(provider: InMemoryPermissionStatusProvider(statuses: [
+            .screenRecording: .granted,
+            .microphone: .denied,
+            .accessibility: .granted,
+            .inputMonitoring: .granted
+        ])),
+        hotkeyManager: HotkeyManager(registry: InMemoryHotkeyRegistry()),
+        audioLevelPreviewSessionFactory: previewFactory
+    )
+
+    let snapshot = await adapter.refresh()
+
+    #expect(snapshot.status == .permissionRequired)
+    #expect(previewFactory.startedDeviceIDs.isEmpty)
+}
+
+@MainActor
+@Test func productionAdapterRetriesContinuousAudioPreviewAfterTransientStartFailure() async throws {
+    let previewFactory = SpyAudioLevelPreviewSessionFactory(errors: [
+        OpenRecError.microphoneUnavailable("mic-1")
+    ])
+    let adapter = OpenRecAppCoreAdapter(
+        settingsStore: SettingsStore(settingsDirectory: temporarySettingsDirectory()),
+        captureSourceProvider: InMemoryCaptureSourceProvider(
+            displays: [
+                DisplaySourceMetadata(
+                    id: DisplayID(rawValue: 10),
+                    name: "Main Display",
+                    pixelSize: CGSize(width: 3024, height: 1964),
+                    isAvailable: true
+                )
+            ],
+            windows: []
+        ),
+        audioDeviceProvider: InMemoryAudioDeviceProvider(devices: [
+            MicrophoneDevice(id: "mic-1", name: "Built-in Microphone", isDefault: true)
+        ]),
+        permissionChecker: PermissionChecker(provider: InMemoryPermissionStatusProvider(
+            statuses: Dictionary(uniqueKeysWithValues: PermissionKind.allCases.map { ($0, .granted) })
+        )),
+        hotkeyManager: HotkeyManager(registry: InMemoryHotkeyRegistry()),
+        audioLevelPreviewSessionFactory: previewFactory
+    )
+
+    _ = await adapter.refresh()
+    _ = adapter.refreshAudioLevel()
+
+    #expect(previewFactory.startedDeviceIDs == ["mic-1", "mic-1"])
+    #expect(previewFactory.sessions.count == 1)
+}
+
+@MainActor
 @Test func productionAdapterExposesAppKitWindowFramesForOverlayLayout() async {
     let adapter = OpenRecAppCoreAdapter(
         settingsStore: SettingsStore(settingsDirectory: temporarySettingsDirectory()),
@@ -910,6 +1244,43 @@ import Foundation
     let windowTarget = snapshot.availableTargets.first { $0.source == .window(WindowID(rawValue: 7)) }
 
     #expect(windowTarget?.screenFrame == CGRect(x: 120, y: 1902, width: 400, height: 250))
+}
+
+@MainActor
+@Test func productionAdapterExposesAppKitDisplayFramesForWindowSelectionFallback() async {
+    let adapter = OpenRecAppCoreAdapter(
+        settingsStore: SettingsStore(settingsDirectory: temporarySettingsDirectory()),
+        captureSourceProvider: InMemoryCaptureSourceProvider(
+            displays: [
+                DisplaySourceMetadata(
+                    id: DisplayID(rawValue: 7),
+                    name: "Studio Display",
+                    pixelSize: CGSize(width: 3024, height: 1964),
+                    isAvailable: true
+                )
+            ],
+            windows: []
+        ),
+        audioDeviceProvider: InMemoryAudioDeviceProvider(devices: [
+            MicrophoneDevice(id: "mic-1", name: "Built-in Microphone", isDefault: true)
+        ]),
+        permissionChecker: PermissionChecker(provider: InMemoryPermissionStatusProvider(
+            statuses: Dictionary(uniqueKeysWithValues: PermissionKind.allCases.map { ($0, .granted) })
+        )),
+        hotkeyManager: HotkeyManager(registry: InMemoryHotkeyRegistry()),
+        screenFrameConverter: WindowScreenFrameConverter(displays: [
+            WindowScreenFrameConverter.DisplayFrame(
+                displayID: DisplayID(rawValue: 7),
+                appKitFrame: CGRect(x: -1440, y: 0, width: 1440, height: 900),
+                coreGraphicsFrame: CGRect(x: -1440, y: 0, width: 1440, height: 900)
+            )
+        ])
+    )
+
+    let snapshot = await adapter.refresh()
+    let displayTarget = snapshot.availableTargets.first { $0.source == .display(DisplayID(rawValue: 7)) }
+
+    #expect(displayTarget?.screenFrame == CGRect(x: -1440, y: 0, width: 1440, height: 900))
 }
 
 @MainActor
@@ -1121,6 +1492,75 @@ import Foundation
     #expect(refreshedSnapshot.status == .error)
     #expect(refreshedSnapshot.errorMessage == "OpenRec could not register the global shortcut.")
     #expect(refreshedSnapshot.settings.globalHotkey == nil)
+}
+
+@MainActor
+@Test func productionAdapterUpdateSettingsRegistersAndPersistsGlobalHotkey() async throws {
+    let hotkey = Hotkey(keyCode: 15, modifiers: [.command, .shift])
+    let settingsStore = SettingsStore(settingsDirectory: temporarySettingsDirectory())
+    let registry = InMemoryHotkeyRegistry()
+    let adapter = editablePreferencesAdapter(
+        settingsStore: settingsStore,
+        hotkeyManager: HotkeyManager(registry: registry)
+    )
+
+    var settings = (await adapter.refresh()).settings
+    settings.globalHotkey = hotkey
+    let snapshot = adapter.updateSettings(settings)
+    let persistedSettings = try settingsStore.load().recording
+
+    #expect(registry.contains(hotkey))
+    #expect(snapshot.settings.globalHotkey == hotkey)
+    #expect(persistedSettings.globalHotkey == hotkey)
+    #expect(snapshot.errorMessage == nil)
+}
+
+@MainActor
+@Test func productionAdapterUpdateSettingsDoesNotPersistRejectedGlobalHotkey() async throws {
+    let hotkey = Hotkey(keyCode: 15, modifiers: [.command, .shift])
+    let settingsStore = SettingsStore(settingsDirectory: temporarySettingsDirectory())
+    let registry = InMemoryHotkeyRegistry(
+        registrationFailure: .registrationFailed("system rejected hotkey")
+    )
+    let adapter = editablePreferencesAdapter(
+        settingsStore: settingsStore,
+        hotkeyManager: HotkeyManager(registry: registry)
+    )
+
+    var settings = (await adapter.refresh()).settings
+    settings.globalHotkey = hotkey
+    let snapshot = adapter.updateSettings(settings)
+    let persistedSettings = try settingsStore.load().recording
+
+    #expect(registry.contains(hotkey) == false)
+    #expect(snapshot.settings.globalHotkey == nil)
+    #expect(persistedSettings.globalHotkey == nil)
+    #expect(snapshot.errorMessage == "OpenRec could not register the global shortcut.")
+}
+
+@MainActor
+@Test func productionAdapterUpdateSettingsClearsRegisteredGlobalHotkey() async throws {
+    let hotkey = Hotkey(keyCode: 15, modifiers: [.command, .shift])
+    let settingsStore = SettingsStore(settingsDirectory: temporarySettingsDirectory())
+    let registry = InMemoryHotkeyRegistry()
+    var initialSettings = RecordingSettings.defaults
+    initialSettings.globalHotkey = hotkey
+    try settingsStore.save(AppSettings(schemaVersion: 1, recording: initialSettings))
+    let adapter = editablePreferencesAdapter(
+        settingsStore: settingsStore,
+        hotkeyManager: HotkeyManager(registry: registry, savedHotkey: hotkey)
+    )
+
+    _ = adapter.registerSavedHotkey()
+    var settings = (await adapter.refresh()).settings
+    settings.globalHotkey = nil
+    let snapshot = adapter.updateSettings(settings)
+    let persistedSettings = try settingsStore.load().recording
+
+    #expect(registry.contains(hotkey) == false)
+    #expect(snapshot.settings.globalHotkey == nil)
+    #expect(persistedSettings.globalHotkey == nil)
+    #expect(snapshot.errorMessage == nil)
 }
 
 @MainActor
@@ -1846,7 +2286,10 @@ private func awaitingSaveAdapter(
 }
 
 @MainActor
-private func editablePreferencesAdapter(settingsStore: SettingsStore) -> OpenRecAppCoreAdapter {
+private func editablePreferencesAdapter(
+    settingsStore: SettingsStore,
+    hotkeyManager: HotkeyManager = HotkeyManager(registry: InMemoryHotkeyRegistry())
+) -> OpenRecAppCoreAdapter {
     OpenRecAppCoreAdapter(
         settingsStore: settingsStore,
         captureSourceProvider: InMemoryCaptureSourceProvider(
@@ -1875,7 +2318,7 @@ private func editablePreferencesAdapter(settingsStore: SettingsStore) -> OpenRec
         permissionChecker: PermissionChecker(provider: InMemoryPermissionStatusProvider(
             statuses: Dictionary(uniqueKeysWithValues: PermissionKind.allCases.map { ($0, .granted) })
         )),
-        hotkeyManager: HotkeyManager(registry: InMemoryHotkeyRegistry())
+        hotkeyManager: hotkeyManager
     )
 }
 
@@ -1923,6 +2366,37 @@ private final class NoOpRecordingEngine: RecordingEngine, @unchecked Sendable {
     func stop(session: RecordingSession) throws -> URL {
         stoppedSessions.append(session)
         return URL(filePath: "/tmp/openrec-finalized.mp4")
+    }
+}
+
+private final class SpyAudioLevelPreviewSessionFactory: AudioLevelPreviewSessionFactory, @unchecked Sendable {
+    private(set) var startedDeviceIDs: [String] = []
+    private(set) var sessions: [SpyAudioLevelPreviewSession] = []
+    private var errors: [OpenRecError]
+
+    init(errors: [OpenRecError] = []) {
+        self.errors = errors
+    }
+
+    func startPreview(
+        deviceID: String,
+        audioLevelMonitor: AudioLevelMonitor
+    ) throws -> any AudioLevelPreviewSession {
+        startedDeviceIDs.append(deviceID)
+        if !errors.isEmpty {
+            throw errors.removeFirst()
+        }
+        let session = SpyAudioLevelPreviewSession()
+        sessions.append(session)
+        return session
+    }
+}
+
+private final class SpyAudioLevelPreviewSession: AudioLevelPreviewSession, @unchecked Sendable {
+    private(set) var didStop = false
+
+    func stop() {
+        didStop = true
     }
 }
 

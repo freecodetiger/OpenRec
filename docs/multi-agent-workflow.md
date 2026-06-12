@@ -377,7 +377,7 @@ Project context:
 OpenRec is a macOS 14+ SwiftUI menu bar screen recorder with an OpenRecCore Swift Package.
 MVP includes display/window recording, microphone audio, MP4/MOV, H.264/HEVC,
 25/30/60 fps presets, compact/standard/high quality presets, original source resolution,
-save panel, JSON settings, saved hotkey registration, and fully offline behavior.
+save panel, JSON settings, custom global recording hotkey, and fully offline behavior.
 
 Your responsibility:
 [owned modules and files]

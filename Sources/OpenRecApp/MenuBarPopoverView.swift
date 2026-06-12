@@ -90,6 +90,7 @@ struct MenuBarPopoverView: View {
     @Environment(\.openWindow) private var openWindow
     private let windowPresenter = UserWindowPresenter()
     private let elapsedTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+    private let audioLevelTimer = Timer.publish(every: 0.1, on: .main, in: .common).autoconnect()
     private var presentation: MenuBarPresentationModel {
         MenuBarPresentationModel.make(
             snapshot: viewModel.snapshot,
@@ -118,6 +119,9 @@ struct MenuBarPopoverView: View {
         .onReceive(elapsedTimer) { _ in
             viewModel.refreshElapsedTime()
         }
+        .onReceive(audioLevelTimer) { _ in
+            viewModel.refreshAudioLevel()
+        }
     }
 
     @ViewBuilder
@@ -127,6 +131,7 @@ struct MenuBarPopoverView: View {
             fullScreenPrimaryAction
             sourceActions
             microphonePicker
+            microphoneLevelIndicator
             settingsSummary
         case .recording:
             recordingSummary
@@ -221,6 +226,15 @@ struct MenuBarPopoverView: View {
         }
     }
 
+    private var microphoneLevelIndicator: some View {
+        MicrophoneLevelIndicator(
+            presentation: MicrophoneLevelPresentation.make(
+                snapshot: viewModel.snapshot,
+                strings: strings
+            )
+        )
+    }
+
     private var settingsSummary: some View {
         HStack(spacing: 8) {
             Image(systemName: "slider.horizontal.3")
@@ -253,6 +267,7 @@ struct MenuBarPopoverView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
+            microphoneLevelIndicator
         }
     }
 

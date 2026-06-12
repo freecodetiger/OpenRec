@@ -70,6 +70,8 @@ public struct WindowSourceMetadata: Equatable, Sendable {
 
 public protocol CaptureSourceProvider: Sendable {
     func displays() async throws -> [DisplaySourceMetadata]
+    /// Returns on-screen windows in front-to-back order so visual selection can resolve
+    /// overlapping windows by choosing the first recordable hit.
     func windows() async throws -> [WindowSourceMetadata]
 }
 

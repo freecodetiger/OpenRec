@@ -16,8 +16,22 @@ public extension RecordingCaptureSession {
 public protocol RecordingCaptureSessionFactory: Sendable {
     func startCapture(
         configuration: ResolvedRecordingConfiguration,
-        writer: any RecordingOutputWriter
+        writer: any RecordingOutputWriter,
+        audioLevelMonitor: AudioLevelMonitor?
     ) throws -> any RecordingCaptureSession
+}
+
+public extension RecordingCaptureSessionFactory {
+    func startCapture(
+        configuration: ResolvedRecordingConfiguration,
+        writer: any RecordingOutputWriter
+    ) throws -> any RecordingCaptureSession {
+        try startCapture(
+            configuration: configuration,
+            writer: writer,
+            audioLevelMonitor: nil
+        )
+    }
 }
 
 public struct ScreenCaptureKitRecordingCaptureSessionFactory: RecordingCaptureSessionFactory {
@@ -43,14 +57,18 @@ public struct ScreenCaptureKitRecordingCaptureSessionFactory: RecordingCaptureSe
 
     public func startCapture(
         configuration: ResolvedRecordingConfiguration,
-        writer: any RecordingOutputWriter
+        writer: any RecordingOutputWriter,
+        audioLevelMonitor: AudioLevelMonitor?
     ) throws -> any RecordingCaptureSession {
         let streamConfiguration = try ScreenCaptureKitStreamConfiguration(
             configuration: configuration,
             supportsMicrophoneOutput: supportsMicrophoneOutput
         )
         let filter = try makeFilter(for: configuration.source)
-        let outputHandler = ScreenCaptureKitStreamOutputHandler(writer: writer)
+        let outputHandler = ScreenCaptureKitStreamOutputHandler(
+            writer: writer,
+            audioLevelMonitor: audioLevelMonitor
+        )
         let stream = try streamBuilder.makeStream(
             filter: filter,
             configuration: streamConfiguration
@@ -444,11 +462,16 @@ final class ScreenCaptureKitStreamAdapter: ScreenCaptureKitStream, @unchecked Se
 
 final class ScreenCaptureKitStreamOutputHandler: NSObject, SCStreamOutput, @unchecked Sendable {
     private let writer: any RecordingOutputWriter
+    private let audioLevelMonitor: AudioLevelMonitor?
     private let lock = NSLock()
     private var lastError: OpenRecError?
 
-    init(writer: any RecordingOutputWriter) {
+    init(
+        writer: any RecordingOutputWriter,
+        audioLevelMonitor: AudioLevelMonitor? = nil
+    ) {
         self.writer = writer
+        self.audioLevelMonitor = audioLevelMonitor
     }
 
     func stream(
@@ -466,6 +489,7 @@ final class ScreenCaptureKitStreamOutputHandler: NSObject, SCStreamOutput, @unch
                 guard sampleBuffer.isCompleteScreenFrame else { return }
                 try writer.appendVideoSampleBuffer(sampleBuffer)
             case .audio, .microphone:
+                updateAudioLevel(from: sampleBuffer)
                 try writer.appendAudioSampleBuffer(sampleBuffer)
             case .unsupported:
                 return
@@ -489,6 +513,15 @@ final class ScreenCaptureKitStreamOutputHandler: NSObject, SCStreamOutput, @unch
         lock.withLock {
             lastError = error
         }
+    }
+
+    private func updateAudioLevel(from sampleBuffer: CMSampleBuffer) {
+        guard let audioLevelMonitor,
+              let snapshot = AudioSampleBufferLevelReader.measure(sampleBuffer) else {
+            return
+        }
+
+        audioLevelMonitor.update(snapshot)
     }
 }
 

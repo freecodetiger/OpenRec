@@ -21,6 +21,8 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
     private let permissionChecker: PermissionChecker
     private let hotkeyManager: HotkeyManager
     private let recordingCoordinator: RecordingCoordinator
+    private let audioLevelMonitor: AudioLevelMonitor
+    private let audioLevelPreviewSessionFactory: any AudioLevelPreviewSessionFactory
     private let sourceValidator: AppCaptureSourceValidator
     private let savePanel: any RecordingSavePanelPresenting
     private let fileMover: any RecordingFileMoving
@@ -36,6 +38,8 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
     private var windows: [WindowSourceMetadata]
     private var appLanguage: AppLanguage
     private var hotkeyRegistrationErrorMessage: String?
+    private var audioLevelPreviewSession: (any AudioLevelPreviewSession)?
+    private var audioLevelPreviewDeviceID: String?
 
     private var strings: OpenRecLocalization {
         OpenRecLocalization(appLanguage)
@@ -54,7 +58,8 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
         systemSettingsOpener: any SystemSettingsOpening = NSWorkspaceSystemSettingsOpener(),
         permissionRequester: any PermissionRequesting = SystemPermissionRequester(),
         appRelauncher: any AppRelaunching = NSWorkspaceAppRelauncher(),
-        screenFrameConverter: WindowScreenFrameConverter = WindowScreenFrameConverter()
+        screenFrameConverter: WindowScreenFrameConverter = WindowScreenFrameConverter(),
+        audioLevelPreviewSessionFactory: any AudioLevelPreviewSessionFactory = DisabledAudioLevelPreviewSessionFactory()
     ) {
         self.settingsStore = settingsStore
         self.captureSourceProvider = captureSourceProvider
@@ -73,13 +78,16 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
         self.permissionRequester = permissionRequester
         self.appRelauncher = appRelauncher
         self.screenFrameConverter = screenFrameConverter
+        self.audioLevelPreviewSessionFactory = audioLevelPreviewSessionFactory
         self.hotkeyRegistrationErrorMessage = nil
+        let audioLevelMonitor = AudioLevelMonitor()
+        self.audioLevelMonitor = audioLevelMonitor
         self.recordingCoordinator = recordingCoordinator ?? RecordingCoordinator(
             permissionValidator: DefaultRecordingPermissionValidator(permissionChecker: permissionChecker),
             configurationResolver: DefaultRecordingConfigurationResolver(
                 sourceValidator: sourceValidator
             ),
-            engine: recordingEngine ?? ScreenCaptureRecordingEngine(),
+            engine: recordingEngine ?? ScreenCaptureRecordingEngine(audioLevelMonitor: audioLevelMonitor),
             finalizer: FileTemporaryRecordingFinalizer()
         )
         self.hotkeyManager.onHotkeyTriggered = { [weak self] _ in
@@ -102,7 +110,8 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
             captureSourceProvider: ScreenCaptureKitCaptureSourceProvider(),
             audioDeviceProvider: AVFoundationAudioDeviceProvider(),
             permissionChecker: permissionChecker,
-            hotkeyManager: hotkeyManager
+            hotkeyManager: hotkeyManager,
+            audioLevelPreviewSessionFactory: AVFoundationAudioLevelPreviewSessionFactory()
         )
     }
 
@@ -115,6 +124,7 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
             let requiredPermissions = requiredPermissions(from: permissionStatuses)
 
             if !requiredPermissions.isEmpty {
+                stopAudioLevelPreview()
                 snapshot = permissionSnapshot(
                     settings: settings,
                     permissionStatuses: permissionStatuses,
@@ -130,9 +140,17 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
                 settings: settings,
                 recordingState: recordingCoordinator.state
             ).withHotkeyRegistrationError(hotkeyRegistrationErrorMessage)
+            syncAudioLevelPreview(for: snapshot)
         } catch {
+            stopAudioLevelPreview()
             snapshot = snapshot.withError(AppErrorPresenter.message(for: error, strings: strings))
         }
+        return snapshot
+    }
+
+    func refreshAudioLevel() -> AppShellSnapshot {
+        syncAudioLevelPreview(for: snapshot)
+        snapshot.audioLevel = shouldShowAudioLevel(for: snapshot.status) ? audioLevelMonitor.snapshot : .inactive
         return snapshot
     }
 
@@ -171,6 +189,7 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
             snapshot = buildSnapshot(settings: snapshot.settings, recordingState: recordingCoordinator.state)
                 .withError(AppErrorPresenter.message(for: error, strings: strings))
         }
+        syncAudioLevelPreview(for: snapshot)
 
         return snapshot
     }
@@ -185,6 +204,7 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
             snapshot = buildSnapshot(settings: snapshot.settings, recordingState: recordingCoordinator.state)
                 .withError(AppErrorPresenter.message(for: error, strings: strings))
         }
+        syncAudioLevelPreview(for: snapshot)
 
         return snapshot
     }
@@ -225,11 +245,15 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
 
     func updateSettings(_ settings: RecordingSettings) -> AppShellSnapshot {
         let settings = normalizedSettings(settings)
+        guard applyHotkeyChangeIfNeeded(settings.globalHotkey) else {
+            return snapshot
+        }
         guard save(settings: settings) else {
             return snapshot
         }
 
         snapshot = buildSnapshot(settings: settings, recordingState: recordingCoordinator.state)
+        syncAudioLevelPreview(for: snapshot)
         return snapshot
     }
 
@@ -265,6 +289,7 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
     func refreshPermissions() -> AppShellSnapshot {
         snapshot = buildSnapshot(settings: snapshot.settings, recordingState: recordingCoordinator.state)
             .withHotkeyRegistrationError(hotkeyRegistrationErrorMessage)
+        syncAudioLevelPreview(for: snapshot)
         return snapshot
     }
 
@@ -306,7 +331,8 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
             errorMessage: errorMessage(for: recordingState),
             elapsedTimeText: elapsedTimeText(for: recordingState),
             pendingSaveURL: pendingSaveURL(for: recordingState),
-            appLanguage: appLanguage
+            appLanguage: appLanguage,
+            audioLevel: audioLevelSnapshot(for: status)
         )
     }
 
@@ -321,6 +347,7 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
             do {
                 try recordingCoordinator.discard()
                 snapshot = buildSnapshot(settings: snapshot.settings, recordingState: recordingCoordinator.state)
+                syncAudioLevelPreview(for: snapshot)
             } catch {
                 snapshot = buildSnapshot(settings: snapshot.settings, recordingState: recordingCoordinator.state)
                     .withError(AppErrorPresenter.message(for: error, strings: strings))
@@ -332,6 +359,7 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
             try fileMover.moveRecording(from: pendingURL, to: destinationURL)
             try recordingCoordinator.markSaved()
             snapshot = buildSnapshot(settings: snapshot.settings, recordingState: recordingCoordinator.state)
+            syncAudioLevelPreview(for: snapshot)
         } catch {
             snapshot = buildSnapshot(settings: snapshot.settings, recordingState: recordingCoordinator.state)
             snapshot.errorMessage = AppErrorPresenter.message(for: error, strings: strings)
@@ -346,6 +374,7 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
         do {
             try recordingCoordinator.discard()
             snapshot = buildSnapshot(settings: snapshot.settings, recordingState: recordingCoordinator.state)
+            syncAudioLevelPreview(for: snapshot)
         } catch {
             snapshot = buildSnapshot(settings: snapshot.settings, recordingState: recordingCoordinator.state)
                 .withError(AppErrorPresenter.message(for: error, strings: strings))
@@ -369,6 +398,38 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
         normalized.defaultMode = .display
         normalized.microphoneDeviceID = normalizedMicrophoneDeviceID(settings.microphoneDeviceID)
         return normalized
+    }
+
+    private func applyHotkeyChangeIfNeeded(_ hotkey: Hotkey?) -> Bool {
+        guard hotkey != snapshot.settings.globalHotkey else {
+            return true
+        }
+
+        do {
+            if let hotkey {
+                try hotkeyManager.saveAndRegister(hotkey)
+            } else {
+                hotkeyManager.clearSavedHotkey()
+            }
+            hotkeyRegistrationErrorMessage = nil
+            return true
+        } catch {
+            hotkeyRegistrationErrorMessage = hotkeyUpdateErrorMessage(for: error)
+            snapshot = snapshot.withHotkeyRegistrationError(hotkeyRegistrationErrorMessage)
+            return false
+        }
+    }
+
+    private func hotkeyUpdateErrorMessage(for error: any Error) -> String {
+        if let openRecError = error as? OpenRecError {
+            return AppErrorPresenter.message(for: openRecError, strings: strings)
+        }
+
+        if error is HotkeyRegistrationError {
+            return strings.hotkeyRegistrationFailure
+        }
+
+        return strings.hotkeyRegistrationFailure
     }
 
     private func normalizedMicrophoneDeviceID(_ deviceID: String?) -> String? {
@@ -425,7 +486,8 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
             errorMessage: nil,
             elapsedTimeText: nil,
             pendingSaveURL: nil,
-            appLanguage: appLanguage
+            appLanguage: appLanguage,
+            audioLevel: .inactive
         )
     }
 
@@ -454,7 +516,8 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
                 mode: .display,
                 source: display.source,
                 title: display.name,
-                subtitle: pixelSizeSubtitle(display.pixelSize)
+                subtitle: pixelSizeSubtitle(display.pixelSize),
+                screenFrame: screenFrameConverter.appKitFrame(forDisplayID: display.id)
             )
         } + windows.filter(Self.isRecordableWindow).map { window in
             SourceTargetOption(
@@ -578,6 +641,52 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
         return url
     }
 
+    private func audioLevelSnapshot(for status: AppShellStatus) -> AudioLevelSnapshot {
+        shouldShowAudioLevel(for: status) ? audioLevelMonitor.snapshot : .inactive
+    }
+
+    private func shouldShowAudioLevel(for status: AppShellStatus) -> Bool {
+        switch status {
+        case .ready, .recording, .awaitingSave:
+            true
+        case .permissionRequired, .error:
+            false
+        }
+    }
+
+    private func syncAudioLevelPreview(for snapshot: AppShellSnapshot) {
+        guard shouldShowAudioLevel(for: snapshot.status),
+              let deviceID = snapshot.selectedMicrophone.deviceID else {
+            stopAudioLevelPreview()
+            return
+        }
+
+        guard audioLevelPreviewDeviceID != deviceID else {
+            return
+        }
+
+        stopAudioLevelPreview()
+        audioLevelMonitor.reset()
+
+        do {
+            audioLevelPreviewSession = try audioLevelPreviewSessionFactory.startPreview(
+                deviceID: deviceID,
+                audioLevelMonitor: audioLevelMonitor
+            )
+            audioLevelPreviewDeviceID = deviceID
+        } catch {
+            audioLevelPreviewSession = nil
+            audioLevelPreviewDeviceID = nil
+        }
+    }
+
+    private func stopAudioLevelPreview() {
+        audioLevelPreviewSession?.stop()
+        audioLevelPreviewSession = nil
+        audioLevelPreviewDeviceID = nil
+        audioLevelMonitor.reset()
+    }
+
     private func windowTitle(_ window: WindowSourceMetadata) -> String {
         guard let appName = window.owningApplicationName,
               !appName.isEmpty,
@@ -619,7 +728,8 @@ final class OpenRecAppCoreAdapter: AppShellAdapter {
             errorMessage: "Choose an available display or window.",
             elapsedTimeText: nil,
             pendingSaveURL: nil,
-            appLanguage: .english
+            appLanguage: .english,
+            audioLevel: .inactive
         )
     }
 }

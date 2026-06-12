@@ -49,6 +49,7 @@ The first release includes:
 - App window recording: choose an application first, then record one visible window from that application.
 - Microphone recording.
 - Menu bar start and stop controls.
+- User-customizable global hotkey that opens window selection from ready state and stops active recordings.
 - Menu bar quick selection for recording mode, target, and microphone.
 - Preferences window for full settings.
 - Output formats: MP4 and MOV.
@@ -105,7 +106,7 @@ Users can configure:
 - Quality preset: compact, standard, or high.
 - Cursor inclusion: show the system cursor.
 - Microphone device.
-- Start/stop global hotkey.
+- Global hotkey: opens window selection while ready, stops recording while recording.
 
 Defaults:
 
@@ -124,7 +125,7 @@ Defaults:
 3. User selects a concrete display or window. In App Window Recording, the user chooses an application first, then chooses one of that application's visible windows.
 4. User confirms or adjusts recording settings before starting.
 5. OpenRec validates permissions, target availability, and settings.
-6. User starts recording from the menu bar or global hotkey.
+6. User starts recording from the control bar or menu bar after choosing a source.
 7. OpenRec records screen video and microphone audio.
 8. User stops recording from the menu bar or global hotkey.
 9. OpenRec finalizes the temporary output file.
@@ -165,7 +166,7 @@ Preferences include:
 - Recording: default mode and cursor behavior.
 - Video: output format, codec, frame rate, and quality preset.
 - Audio: microphone device and audio quality preset.
-- Shortcuts: saved global start/stop hotkey status; custom shortcut capture UI is deferred.
+- Shortcuts: set, change, clear, and validate the global recording hotkey.
 - Permissions: status and System Settings links.
 
 ## Privacy

@@ -193,11 +193,11 @@ Rules:
 
 ### HotkeyManager
 
-Registers a saved global start/stop hotkey when one exists.
+Registers and updates the user-configurable global recording hotkey. In the ready state it opens visual window selection; while recording it stops the active recording.
 
 Rules:
 
-- User-facing shortcut capture UI is deferred beyond the current MVP.
+- The user can set, change, and clear the hotkey in Preferences.
 - Conflicting hotkeys are rejected and not saved.
 - If registration fails at app launch, the app disables the hotkey and shows a preferences error.
 

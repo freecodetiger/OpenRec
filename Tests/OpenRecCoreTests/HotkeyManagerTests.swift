@@ -37,6 +37,37 @@ import Carbon
     #expect(registry.contains(hotkey))
 }
 
+@Test func hotkeyManagerReplacesPreviouslyRegisteredHotkey() throws {
+    let firstHotkey = Hotkey(keyCode: 49, modifiers: [.command])
+    let secondHotkey = Hotkey(keyCode: 15, modifiers: [.command, .shift])
+    let registry = InMemoryHotkeyRegistry()
+    let manager = HotkeyManager(registry: registry)
+
+    try manager.saveAndRegister(firstHotkey)
+    try manager.saveAndRegister(secondHotkey)
+
+    #expect(registry.contains(firstHotkey) == false)
+    #expect(registry.contains(secondHotkey))
+    #expect(manager.savedHotkey == secondHotkey)
+}
+
+@Test func hotkeyManagerKeepsPreviouslyRegisteredHotkeyWhenReplacementRegistrationFails() {
+    let firstHotkey = Hotkey(keyCode: 49, modifiers: [.command])
+    let secondHotkey = Hotkey(keyCode: 15, modifiers: [.command, .shift])
+    let registry = InMemoryHotkeyRegistry(
+        registeredHotkeys: [firstHotkey],
+        registrationFailure: .registrationFailed("system rejected replacement")
+    )
+    let manager = HotkeyManager(registry: registry, savedHotkey: firstHotkey)
+
+    #expect(throws: HotkeyRegistrationError.registrationFailed("system rejected replacement")) {
+        try manager.saveAndRegister(secondHotkey)
+    }
+    #expect(registry.contains(firstHotkey))
+    #expect(registry.contains(secondHotkey) == false)
+    #expect(manager.savedHotkey == firstHotkey)
+}
+
 @Test func hotkeyManagerRegistersSavedHotkeyWithoutSavingANewValue() throws {
     let hotkey = Hotkey(keyCode: 49, modifiers: [.command, .shift])
     let registry = InMemoryHotkeyRegistry()
@@ -88,7 +119,7 @@ import Carbon
     #expect(registry.contains(hotkey))
 }
 
-@Test func systemHotkeyRegistryUnregistersExistingTokenBeforeRegisteringReplacement() throws {
+@Test func systemHotkeyRegistryUnregistersExistingTokenAfterRegisteringReplacement() throws {
     let firstHotkey = Hotkey(keyCode: 49, modifiers: [.command])
     let replacementHotkey = Hotkey(keyCode: 12, modifiers: [.option])
     let adapter = MockCarbonHotkeyAdapter(registerResults: [
@@ -102,12 +133,35 @@ import Carbon
 
     #expect(adapter.calls == [
         .register(.init(keyCode: 49, modifiers: UInt32(cmdKey))),
-        .unregister(CarbonHotkeyToken(rawValue: 100)),
-        .register(.init(keyCode: 12, modifiers: UInt32(optionKey)))
+        .register(.init(keyCode: 12, modifiers: UInt32(optionKey))),
+        .unregister(CarbonHotkeyToken(rawValue: 100))
     ])
     #expect(adapter.unregisteredTokens == [CarbonHotkeyToken(rawValue: 100)])
     #expect(registry.contains(firstHotkey) == false)
     #expect(registry.contains(replacementHotkey))
+}
+
+@Test func systemHotkeyRegistryKeepsExistingTokenWhenReplacementRegistrationFails() throws {
+    let firstHotkey = Hotkey(keyCode: 49, modifiers: [.command])
+    let replacementHotkey = Hotkey(keyCode: 12, modifiers: [.option])
+    let adapter = MockCarbonHotkeyAdapter(registerResults: [
+        .success(CarbonHotkeyToken(rawValue: 100)),
+        .failure(.registrationFailed("system rejected replacement"))
+    ])
+    let registry = SystemHotkeyRegistry(adapter: adapter)
+
+    try registry.register(firstHotkey)
+    #expect(throws: HotkeyRegistrationError.registrationFailed("system rejected replacement")) {
+        try registry.register(replacementHotkey)
+    }
+
+    #expect(adapter.calls == [
+        .register(.init(keyCode: 49, modifiers: UInt32(cmdKey))),
+        .register(.init(keyCode: 12, modifiers: UInt32(optionKey)))
+    ])
+    #expect(adapter.unregisteredTokens.isEmpty)
+    #expect(registry.contains(firstHotkey))
+    #expect(registry.contains(replacementHotkey) == false)
 }
 
 @Test func systemHotkeyRegistryRegistrationFailureDoesNotTrackHotkey() {

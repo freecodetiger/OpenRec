@@ -10,6 +10,7 @@ final class MockAppCoreAdapter: AppShellAdapter {
     private(set) var saveRecordingCallCount = 0
     private(set) var discardRecordingCallCount = 0
     private(set) var refreshCallCount = 0
+    private(set) var refreshAudioLevelCallCount = 0
     private(set) var refreshPermissionsCallCount = 0
     private(set) var selectModes: [CaptureMode] = []
     private(set) var selectTargetIDs: [String] = []
@@ -20,6 +21,7 @@ final class MockAppCoreAdapter: AppShellAdapter {
     private(set) var reopenApplicationCallCount = 0
     var permissionRefreshSnapshot: AppShellSnapshot?
     var stopRecordingSnapshot: AppShellSnapshot?
+    var audioLevelSnapshot: AudioLevelSnapshot = .inactive
     var onSaveRecording: (() -> Void)?
     private let hotkeyManager: HotkeyManager?
 
@@ -41,6 +43,17 @@ final class MockAppCoreAdapter: AppShellAdapter {
         return snapshot
     }
 
+    func refreshAudioLevel() -> AppShellSnapshot {
+        refreshAudioLevelCallCount += 1
+        switch snapshot.status {
+        case .ready, .recording, .awaitingSave:
+            snapshot.audioLevel = audioLevelSnapshot
+        case .permissionRequired, .error:
+            snapshot.audioLevel = .inactive
+        }
+        return snapshot
+    }
+
     func registerSavedHotkey() -> AppShellSnapshot {
         do {
             try hotkeyManager?.registerSavedHotkey()
@@ -56,6 +69,7 @@ final class MockAppCoreAdapter: AppShellAdapter {
         startRecordingCallCount += 1
         snapshot.status = .recording
         snapshot.elapsedTimeText = "00:00"
+        snapshot.audioLevel = audioLevelSnapshot
         snapshot.errorMessage = nil
         return snapshot
     }
@@ -69,6 +83,7 @@ final class MockAppCoreAdapter: AppShellAdapter {
         }
         snapshot.status = .ready
         snapshot.elapsedTimeText = nil
+        snapshot.audioLevel = .inactive
         return snapshot
     }
 
@@ -93,6 +108,7 @@ final class MockAppCoreAdapter: AppShellAdapter {
     func selectMicrophone(id: String) -> AppShellSnapshot {
         if snapshot.microphones.contains(where: { $0.id == id }) {
             snapshot.selectedMicrophoneID = id
+            snapshot.audioLevel = .inactive
         }
         return snapshot
     }

@@ -8,7 +8,9 @@ struct WindowSelectionOverlayModel: Equatable {
     private(set) var selectedTargetID: String?
 
     init(targets: [SourceTargetOption]) {
-        self.targets = targets.filter { $0.mode == .window }
+        let windowTargets = targets.filter { $0.mode == .window }
+        let displayTargets = targets.filter { $0.mode == .display }
+        self.targets = windowTargets + displayTargets
     }
 
     mutating func hover(targetID: String?) {
@@ -75,6 +77,10 @@ struct WindowSelectionOverlayModel: Equatable {
             return localFrame(for: screenFrame, in: viewSize, overlayScreenFrame: overlayScreenFrame)
         }
 
+        if target.mode == .display {
+            return localFrame(for: overlayScreenFrame, in: viewSize, overlayScreenFrame: overlayScreenFrame)
+        }
+
         return nil
     }
 
@@ -83,7 +89,19 @@ struct WindowSelectionOverlayModel: Equatable {
         in viewSize: CGSize,
         overlayScreenFrame: CGRect
     ) -> String? {
-        for (index, target) in targets.enumerated() {
+        for (index, target) in targets.enumerated() where target.mode == .window {
+            let frame = frame(
+                for: target,
+                index: index,
+                in: viewSize,
+                overlayScreenFrame: overlayScreenFrame
+            )
+            if let frame, frame.contains(location) {
+                return target.id
+            }
+        }
+
+        for (index, target) in targets.enumerated() where target.mode == .display {
             let frame = frame(
                 for: target,
                 index: index,
@@ -145,8 +163,19 @@ struct WindowSelectionOverlayLayout: Equatable {
 
 struct WindowScreenFrameConverter: Equatable {
     struct DisplayFrame: Equatable {
+        var displayID: DisplayID?
         var appKitFrame: CGRect
         var coreGraphicsFrame: CGRect
+
+        init(
+            displayID: DisplayID? = nil,
+            appKitFrame: CGRect,
+            coreGraphicsFrame: CGRect
+        ) {
+            self.displayID = displayID
+            self.appKitFrame = appKitFrame
+            self.coreGraphicsFrame = coreGraphicsFrame
+        }
     }
 
     var displays: [DisplayFrame]
@@ -163,10 +192,15 @@ struct WindowScreenFrameConverter: Equatable {
             }
 
             return DisplayFrame(
+                displayID: DisplayID(rawValue: displayID),
                 appKitFrame: screen.frame,
                 coreGraphicsFrame: CGDisplayBounds(displayID)
             )
         }
+    }
+
+    func appKitFrame(forDisplayID displayID: DisplayID) -> CGRect? {
+        displays.first { $0.displayID == displayID }?.appKitFrame
     }
 
     func appKitFrame(fromScreenCaptureKitFrame frame: CGRect?) -> CGRect? {

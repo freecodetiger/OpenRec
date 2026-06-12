@@ -240,6 +240,20 @@ import Testing
     #expect(writer.audioAppendCount == 2)
 }
 
+@Test func screenCaptureKitOutputHandlerMetersMicrophoneSamplesWithoutSkippingWriterAppend() throws {
+    let writer = SpyRecordingOutputWriter(outputURL: URL(filePath: "/tmp/openrec-metered-output.mp4"))
+    let audioLevelMonitor = AudioLevelMonitor()
+    let handler = ScreenCaptureKitStreamOutputHandler(
+        writer: writer,
+        audioLevelMonitor: audioLevelMonitor
+    )
+
+    handler.handle(try audioSampleBuffer(samples: [Float(0.25), Float(-0.25)]), type: .microphone)
+
+    #expect(writer.audioAppendCount == 1)
+    #expect(audioLevelMonitor.snapshot.state == .normal)
+}
+
 @Test func screenCaptureKitOutputHandlerIgnoresIncompleteScreenFrames() throws {
     let writer = SpyRecordingOutputWriter(outputURL: URL(filePath: "/tmp/openrec-incomplete-frame.mp4"))
     let handler = ScreenCaptureKitStreamOutputHandler(writer: writer)
@@ -301,6 +315,89 @@ private func emptySampleBuffer() throws -> CMSampleBuffer {
         throw OpenRecError.writerFailed("Could not create test sample buffer.")
     }
 
+    return sampleBuffer
+}
+
+private func audioSampleBuffer(samples: [Float]) throws -> CMSampleBuffer {
+    let data = samples.withUnsafeBufferPointer { buffer in
+        Data(buffer: UnsafeBufferPointer(start: buffer.baseAddress, count: samples.count))
+    }
+    var streamDescription = AudioStreamBasicDescription(
+        mSampleRate: 48_000,
+        mFormatID: kAudioFormatLinearPCM,
+        mFormatFlags: kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked,
+        mBytesPerPacket: UInt32(MemoryLayout<Float>.size),
+        mFramesPerPacket: 1,
+        mBytesPerFrame: UInt32(MemoryLayout<Float>.size),
+        mChannelsPerFrame: 1,
+        mBitsPerChannel: UInt32(MemoryLayout<Float>.size * 8),
+        mReserved: 0
+    )
+    var formatDescription: CMAudioFormatDescription?
+    let formatStatus = CMAudioFormatDescriptionCreate(
+        allocator: kCFAllocatorDefault,
+        asbd: &streamDescription,
+        layoutSize: 0,
+        layout: nil,
+        magicCookieSize: 0,
+        magicCookie: nil,
+        extensions: nil,
+        formatDescriptionOut: &formatDescription
+    )
+    guard formatStatus == noErr, let formatDescription else {
+        throw OpenRecError.writerFailed("Could not create test audio format description.")
+    }
+
+    var blockBuffer: CMBlockBuffer?
+    let blockStatus = CMBlockBufferCreateWithMemoryBlock(
+        allocator: kCFAllocatorDefault,
+        memoryBlock: nil,
+        blockLength: data.count,
+        blockAllocator: kCFAllocatorDefault,
+        customBlockSource: nil,
+        offsetToData: 0,
+        dataLength: data.count,
+        flags: 0,
+        blockBufferOut: &blockBuffer
+    )
+    guard blockStatus == noErr, let blockBuffer else {
+        throw OpenRecError.writerFailed("Could not create test audio block buffer.")
+    }
+    try data.withUnsafeBytes { rawBuffer in
+        guard let baseAddress = rawBuffer.baseAddress else {
+            throw OpenRecError.writerFailed("Could not read test audio data.")
+        }
+        let fillStatus = CMBlockBufferReplaceDataBytes(
+            with: baseAddress,
+            blockBuffer: blockBuffer,
+            offsetIntoDestination: 0,
+            dataLength: data.count
+        )
+        guard fillStatus == noErr else {
+            throw OpenRecError.writerFailed("Could not fill test audio block buffer.")
+        }
+    }
+
+    var timing = CMSampleTimingInfo(
+        duration: CMTime(value: 1, timescale: 48_000),
+        presentationTimeStamp: .zero,
+        decodeTimeStamp: .invalid
+    )
+    var sampleBuffer: CMSampleBuffer?
+    let sampleStatus = CMSampleBufferCreateReady(
+        allocator: kCFAllocatorDefault,
+        dataBuffer: blockBuffer,
+        formatDescription: formatDescription,
+        sampleCount: samples.count,
+        sampleTimingEntryCount: 1,
+        sampleTimingArray: &timing,
+        sampleSizeEntryCount: 1,
+        sampleSizeArray: [MemoryLayout<Float>.size],
+        sampleBufferOut: &sampleBuffer
+    )
+    guard sampleStatus == noErr, let sampleBuffer else {
+        throw OpenRecError.writerFailed("Could not create test audio sample buffer.")
+    }
     return sampleBuffer
 }
 
@@ -393,12 +490,15 @@ private struct SpyRecordingOutputWriterFactory: RecordingOutputWriterFactory {
 
 private final class SpyMicrophoneCaptureSessionFactory: MicrophoneCaptureSessionFactory, @unchecked Sendable {
     private(set) var startedDeviceIDs: [String] = []
+    private(set) var audioLevelMonitors: [AudioLevelMonitor?] = []
 
     func startMicrophoneCapture(
         deviceID: String,
-        writer: any RecordingOutputWriter
+        writer: any RecordingOutputWriter,
+        audioLevelMonitor: AudioLevelMonitor?
     ) throws -> any MicrophoneCaptureSession {
         startedDeviceIDs.append(deviceID)
+        audioLevelMonitors.append(audioLevelMonitor)
         return SpyMicrophoneCaptureSession()
     }
 }

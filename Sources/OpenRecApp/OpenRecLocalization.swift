@@ -33,8 +33,22 @@ struct OpenRecLocalization: Equatable {
     var microphone: String { text("Microphone", "麦克风") }
     var audioQuality: String { text("Audio encoding", "音频编码") }
     var audioEncodingDetail: String { text("AAC-LC target bitrate for microphone capture.", "麦克风音频的 AAC-LC 目标码率。") }
+    var microphoneLevelInactive: String { text("Inactive", "未监听") }
+    var microphoneLevelNoInput: String { text("No input", "无输入") }
+    var microphoneLevelLow: String { text("Input low", "输入偏低") }
+    var microphoneLevelNormal: String { text("Normal input", "输入正常") }
+    var microphoneLevelHigh: String { text("Input high", "输入偏高") }
+    var microphoneLevelClippingRisk: String { text("Clipping risk", "削波风险") }
+    var microphoneLevelAwaitingRecording: String { text("Waiting for recording audio", "等待录制音频") }
+    var rmsLevelLabel: String { text("RMS", "RMS") }
+    var peakLevelLabel: String { text("Peak", "Peak") }
     var globalShortcut: String { text("Global shortcut", "全局快捷键") }
-    var recordShortcut: String { text("Record Shortcut", "录制快捷键") }
+    var setShortcut: String { text("Set Shortcut", "设置快捷键") }
+    var changeShortcut: String { text("Change Shortcut", "更改快捷键") }
+    var clearShortcut: String { text("Clear", "清除") }
+    var pressShortcut: String { text("Press shortcut", "按下快捷键") }
+    var shortcutCaptureHint: String { text("Press a key combination. Esc cancels.", "按下一个组合键。Esc 取消。") }
+    var shortcutRequiresModifier: String { text("Use at least one modifier key.", "至少使用一个修饰键。") }
     var recheckPermissions: String { text("Re-check Permissions", "重新检查权限") }
     var openSystemSettings: String { text("Open System Settings", "打开系统设置") }
     var openSettings: String { text("Open Settings", "打开设置") }

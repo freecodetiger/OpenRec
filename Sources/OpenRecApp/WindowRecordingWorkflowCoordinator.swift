@@ -28,12 +28,29 @@ final class WindowRecordingWorkflowCoordinator: ObservableObject {
 
     func begin() {
         closeMenu()
-        guard viewModel.snapshot.availableTargets.contains(where: { $0.mode == .window }) else {
-            showNoWindowsAlert()
+        Task {
+            await beginAfterRefreshingSources()
+        }
+    }
+
+    private func beginAfterRefreshingSources() async {
+        await viewModel.refresh()
+        guard viewModel.snapshot.availableTargets.contains(where: { $0.mode == .window || $0.mode == .display }) else {
+            showNoSourcesAlert()
             return
         }
         guard viewModel.requestWindowRecordingWorkflow() else { return }
 
+        presentWindowSelection()
+    }
+
+    func presentWindowSelectionForCurrentWorkflow() {
+        closeMenu()
+        guard case .selectingWindow = viewModel.windowRecordingWorkflow else { return }
+        presentWindowSelection()
+    }
+
+    private func presentWindowSelection() {
         selectionPresenter.present(
             targets: viewModel.snapshot.availableTargets,
             persistsAfterSelection: true,
@@ -113,6 +130,12 @@ final class WindowRecordingWorkflowCoordinator: ObservableObject {
         controlBarPresenter.present(
             target: target,
             snapshot: viewModel.snapshot,
+            snapshotProvider: { [weak viewModel] in
+                viewModel?.snapshot ?? .ready
+            },
+            onRefreshAudioLevel: { [weak viewModel] in
+                viewModel?.refreshAudioLevel()
+            },
             onSettingsChange: { [weak self] settings in
                 self?.viewModel.updateWindowControlBarSettings(settings)
             },
@@ -126,10 +149,10 @@ final class WindowRecordingWorkflowCoordinator: ObservableObject {
         )
     }
 
-    private func showNoWindowsAlert() {
+    private func showNoSourcesAlert() {
         showAlert(
             messageText: strings.noRecordableWindowsTitle,
-            informativeText: strings.noRecordableWindowsDetail
+            informativeText: strings.chooseAvailableSource
         )
     }
 

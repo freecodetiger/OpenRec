@@ -34,6 +34,9 @@ public final class HotkeyManager: @unchecked Sendable {
         }
 
         try registry.register(hotkey)
+        if let savedHotkey, savedHotkey != hotkey {
+            registry.unregister(savedHotkey)
+        }
         savedHotkey = hotkey
     }
 
@@ -222,12 +225,14 @@ public final class SystemHotkeyRegistry: HotkeyRegistry, @unchecked Sendable {
     }
 
     public func register(_ hotkey: Hotkey) throws {
+        guard !contains(hotkey) else { return }
+
         let carbonHotkey = CarbonHotkey(
             keyCode: UInt32(hotkey.keyCode),
             modifiers: carbonModifiers(for: hotkey.modifiers)
         )
-        unregisterAllRegisteredHotkeys()
         let token = try adapter.register(carbonHotkey)
+        unregisterAllRegisteredHotkeys()
         registeredTokens = [(hotkey: hotkey, token: token)]
     }
 

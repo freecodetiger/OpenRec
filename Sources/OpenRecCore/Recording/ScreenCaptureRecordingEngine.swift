@@ -11,6 +11,7 @@ public final class ScreenCaptureRecordingEngine: RecordingEngine, @unchecked Sen
     private let writerFactory: any RecordingOutputWriterFactory
     private let captureSessionFactory: any RecordingCaptureSessionFactory
     private let microphoneCaptureSessionFactory: any MicrophoneCaptureSessionFactory
+    private let audioLevelMonitor: AudioLevelMonitor?
     private let idProvider: @Sendable () -> UUID
     private let fileManager: FileManager
     private let lock = NSLock()
@@ -21,6 +22,7 @@ public final class ScreenCaptureRecordingEngine: RecordingEngine, @unchecked Sen
         writerFactory: any RecordingOutputWriterFactory = AVAssetRecordingOutputWriterFactory(),
         captureSessionFactory: any RecordingCaptureSessionFactory = ScreenCaptureKitRecordingCaptureSessionFactory(),
         microphoneCaptureSessionFactory: any MicrophoneCaptureSessionFactory = AVFoundationMicrophoneCaptureSessionFactory(),
+        audioLevelMonitor: AudioLevelMonitor? = nil,
         idProvider: @escaping @Sendable () -> UUID = { UUID() },
         fileManager: FileManager = .default
     ) {
@@ -28,6 +30,7 @@ public final class ScreenCaptureRecordingEngine: RecordingEngine, @unchecked Sen
         self.writerFactory = writerFactory
         self.captureSessionFactory = captureSessionFactory
         self.microphoneCaptureSessionFactory = microphoneCaptureSessionFactory
+        self.audioLevelMonitor = audioLevelMonitor
         self.idProvider = idProvider
         self.fileManager = fileManager
     }
@@ -65,7 +68,8 @@ public final class ScreenCaptureRecordingEngine: RecordingEngine, @unchecked Sen
 
             let startedCaptureSession = try captureSessionFactory.startCapture(
                 configuration: configuration,
-                writer: createdWriter
+                writer: createdWriter,
+                audioLevelMonitor: audioLevelMonitor
             )
             captureSession = startedCaptureSession
             let startedMicrophoneCaptureSession = try startMicrophoneCaptureIfNeeded(
@@ -146,7 +150,8 @@ public final class ScreenCaptureRecordingEngine: RecordingEngine, @unchecked Sen
 
         return try microphoneCaptureSessionFactory.startMicrophoneCapture(
             deviceID: microphoneDeviceID,
-            writer: writer
+            writer: writer,
+            audioLevelMonitor: audioLevelMonitor
         )
     }
 

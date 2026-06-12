@@ -6,9 +6,9 @@ struct WindowRecordingControlBarLayout: Equatable {
     var targetFrame: CGRect?
     var visibleScreenFrame: CGRect
 
-    private let preferredSize = CGSize(width: 760, height: 96)
-    private let compactHeight: CGFloat = 128
-    private let minimumSize = CGSize(width: 320, height: 96)
+    private let preferredSize = CGSize(width: 760, height: 128)
+    private let compactHeight: CGFloat = 164
+    private let minimumSize = CGSize(width: 320, height: 128)
     private let edgeInset: CGFloat = 12
 
     func panelFrame() -> CGRect {
@@ -54,21 +54,43 @@ struct WindowRecordingControlBarLayout: Equatable {
 
 struct WindowRecordingControlBarView: View {
     var snapshot: AppShellSnapshot
+    var snapshotProvider: @MainActor () -> AppShellSnapshot
+    var onRefreshAudioLevel: @MainActor () -> Void = {}
     var onSettingsChange: @MainActor (RecordingSettings) -> Void = { _ in }
     var onStart: @MainActor () -> Void = {}
     var onCancel: @MainActor () -> Void = {}
 
     @State private var draftSettings: RecordingSettings
+    @State private var liveSnapshot: AppShellSnapshot
+    private let audioLevelTimer = Timer.publish(every: 0.1, on: .main, in: .common).autoconnect()
 
     private var strings: OpenRecLocalization {
-        OpenRecLocalization(snapshot.appLanguage)
+        OpenRecLocalization(liveSnapshot.appLanguage)
     }
     private var parameterSummary: RecordingParameterSummary {
         RecordingParameterSummary.make(
-            target: snapshot.selectedTarget,
+            target: liveSnapshot.selectedTarget,
             settings: draftSettings,
             strings: strings
         )
+    }
+
+    init(
+        snapshot: AppShellSnapshot,
+        snapshotProvider: @escaping @MainActor () -> AppShellSnapshot,
+        onRefreshAudioLevel: @escaping @MainActor () -> Void = {},
+        onSettingsChange: @escaping @MainActor (RecordingSettings) -> Void = { _ in },
+        onStart: @escaping @MainActor () -> Void = {},
+        onCancel: @escaping @MainActor () -> Void = {}
+    ) {
+        self.snapshot = snapshot
+        self.snapshotProvider = snapshotProvider
+        self.onRefreshAudioLevel = onRefreshAudioLevel
+        self.onSettingsChange = onSettingsChange
+        self.onStart = onStart
+        self.onCancel = onCancel
+        _draftSettings = State(initialValue: snapshot.settings)
+        _liveSnapshot = State(initialValue: snapshot)
     }
 
     init(
@@ -77,76 +99,158 @@ struct WindowRecordingControlBarView: View {
         onStart: @escaping @MainActor () -> Void = {},
         onCancel: @escaping @MainActor () -> Void = {}
     ) {
-        self.snapshot = snapshot
-        self.onSettingsChange = onSettingsChange
-        self.onStart = onStart
-        self.onCancel = onCancel
-        _draftSettings = State(initialValue: snapshot.settings)
+        self.init(
+            snapshot: snapshot,
+            snapshotProvider: { snapshot },
+            onRefreshAudioLevel: {},
+            onSettingsChange: onSettingsChange,
+            onStart: onStart,
+            onCancel: onCancel
+        )
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 10) {
-                settingPicker(strings.format, selection: settingBinding(\.outputFormat), values: OutputFormat.allCases) { $0.label }
-                settingPicker(strings.codec, selection: settingBinding(\.videoCodec), values: VideoCodec.allCases) { $0.label }
-                settingPicker(strings.frameRate, selection: settingBinding(\.frameRate), values: FrameRatePreset.allCases) { $0.label }
-                settingPicker(strings.quality, selection: settingBinding(\.qualityPreset), values: QualityPreset.allCases) {
-                    strings.qualityLabel($0)
-                }
-            }
-
-            HStack(spacing: 10) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("\(strings.quality): \(parameterSummary.bitrateText)")
-                        .font(.caption.weight(.medium))
-                        .monospacedDigit()
-                    Text("\(parameterSummary.videoDetailText) · \(parameterSummary.audioDetailText)")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                }
-                .frame(minWidth: 220, alignment: .leading)
-
-                Picker(strings.microphone, selection: microphoneBinding) {
-                    ForEach(snapshot.microphones) { microphone in
-                        Text(microphone.title).tag(microphone.id)
-                    }
-                }
-                .labelsHidden()
-                .frame(minWidth: 160)
-
-                Spacer(minLength: 8)
-
-                Button(strings.cancel, role: .cancel) {
-                    onCancel()
-                }
-                .keyboardShortcut(.cancelAction)
-
-                Button(strings.start) {
-                    onStart()
-                }
-                .buttonStyle(.borderedProminent)
-                .keyboardShortcut(.defaultAction)
-            }
+            settingControls
+            recordingControls
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
-        .frame(minWidth: 320, idealWidth: 760, maxWidth: .infinity, minHeight: 96, alignment: .center)
+        .frame(minWidth: 320, idealWidth: 760, maxWidth: .infinity, minHeight: 128, alignment: .center)
         .background(.regularMaterial)
         .onChange(of: snapshot) { _, snapshot in
             draftSettings = snapshot.settings
+            liveSnapshot = snapshot
+        }
+        .onReceive(audioLevelTimer) { _ in
+            onRefreshAudioLevel()
+            liveSnapshot = snapshotProvider()
+        }
+    }
+
+    private var settingControls: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 10) {
+                formatPicker
+                codecPicker
+                frameRatePicker
+                qualityPicker
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 10) {
+                    formatPicker
+                    codecPicker
+                }
+                HStack(spacing: 10) {
+                    frameRatePicker
+                    qualityPicker
+                }
+            }
+        }
+    }
+
+    private var recordingControls: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 10) {
+                parameterSummaryView
+                microphonePickerControl
+                microphoneLevelControl
+                Spacer(minLength: 8)
+                actionButtons
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 10) {
+                    parameterSummaryView
+                    Spacer(minLength: 8)
+                    microphonePickerControl
+                }
+                HStack(spacing: 10) {
+                    microphoneLevelControl
+                    Spacer(minLength: 8)
+                    actionButtons
+                }
+            }
+        }
+    }
+
+    private var formatPicker: some View {
+        settingPicker(strings.format, selection: settingBinding(\.outputFormat), values: OutputFormat.allCases) { $0.label }
+    }
+
+    private var codecPicker: some View {
+        settingPicker(strings.codec, selection: settingBinding(\.videoCodec), values: VideoCodec.allCases) { $0.label }
+    }
+
+    private var frameRatePicker: some View {
+        settingPicker(strings.frameRate, selection: settingBinding(\.frameRate), values: FrameRatePreset.allCases) { $0.label }
+    }
+
+    private var qualityPicker: some View {
+        settingPicker(strings.quality, selection: settingBinding(\.qualityPreset), values: QualityPreset.allCases) {
+            strings.qualityLabel($0)
+        }
+    }
+
+    private var parameterSummaryView: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("\(strings.quality): \(parameterSummary.bitrateText)")
+                .font(.caption.weight(.medium))
+                .monospacedDigit()
+            Text("\(parameterSummary.videoDetailText) · \(parameterSummary.audioDetailText)")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+        }
+        .frame(minWidth: 180, maxWidth: 260, alignment: .leading)
+    }
+
+    private var microphonePickerControl: some View {
+        Picker(strings.microphone, selection: microphoneBinding) {
+            ForEach(liveSnapshot.microphones) { microphone in
+                Text(microphone.title).tag(microphone.id)
+            }
+        }
+        .labelsHidden()
+        .frame(minWidth: 130, maxWidth: 180)
+    }
+
+    private var microphoneLevelControl: some View {
+        MicrophoneLevelIndicator(
+            presentation: MicrophoneLevelPresentation.make(
+                snapshot: liveSnapshot,
+                strings: strings
+            ),
+            compact: true
+        )
+        .frame(minWidth: 130, maxWidth: 190)
+    }
+
+    private var actionButtons: some View {
+        HStack(spacing: 8) {
+            Button(strings.cancel, role: .cancel) {
+                onCancel()
+            }
+            .keyboardShortcut(.cancelAction)
+
+            Button(strings.start) {
+                onStart()
+            }
+            .buttonStyle(.borderedProminent)
+            .keyboardShortcut(.defaultAction)
         }
     }
 
     private var microphoneBinding: Binding<String> {
         Binding(
             get: {
-                snapshot.microphones.first { $0.deviceID == draftSettings.microphoneDeviceID }?.id ??
-                    snapshot.selectedMicrophoneID
+                liveSnapshot.microphones.first { $0.deviceID == draftSettings.microphoneDeviceID }?.id ??
+                    liveSnapshot.selectedMicrophoneID
             },
             set: { selectedID in
-                guard let microphone = snapshot.microphones.first(where: { $0.id == selectedID }) else {
+                guard let microphone = liveSnapshot.microphones.first(where: { $0.id == selectedID }) else {
                     return
                 }
                 updateSettings { settings in
@@ -200,6 +304,8 @@ final class WindowRecordingControlBarPresenter {
     func present(
         target: SourceTargetOption,
         snapshot: AppShellSnapshot,
+        snapshotProvider: @escaping @MainActor () -> AppShellSnapshot,
+        onRefreshAudioLevel: @escaping @MainActor () -> Void,
         onSettingsChange: @escaping @MainActor (RecordingSettings) -> Void,
         onStart: @escaping @MainActor () -> Void,
         onCancel: @escaping @MainActor () -> Void
@@ -222,6 +328,8 @@ final class WindowRecordingControlBarPresenter {
         controlPanel.contentView = NSHostingView(
             rootView: WindowRecordingControlBarView(
                 snapshot: snapshot,
+                snapshotProvider: snapshotProvider,
+                onRefreshAudioLevel: onRefreshAudioLevel,
                 onSettingsChange: onSettingsChange,
                 onStart: { [weak self] in
                     self?.dismiss()

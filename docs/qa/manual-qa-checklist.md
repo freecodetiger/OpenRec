@@ -134,8 +134,10 @@ These checks require real macOS hardware because ScreenCaptureKit, permissions, 
 
 ## Hotkeys
 
-- [ ] Saved global start/stop hotkey registers on launch.
-- [ ] Hotkey starts recording from the ready state.
+- [ ] Saved global recording hotkey registers on launch.
+- [ ] Hotkey opens visual window selection from the ready state.
+- [ ] In window selection, hovering a recordable window highlights that window; hovering empty or filtered areas falls back to the current display.
+- [ ] Clicking a selected window or display opens the control bar before recording starts.
 - [ ] Hotkey stops recording from the recording state.
 - [ ] Hotkey does nothing unsafe while permission, source selection, save, or error flows are active.
 - [ ] Registration conflicts show a recoverable error and do not save the failed hotkey.

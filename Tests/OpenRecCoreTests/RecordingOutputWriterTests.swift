@@ -325,10 +325,12 @@ import Testing
     let captureSessionFactory = SuccessfulRecordingCaptureSessionFactory(captureSession: captureSession)
     let microphoneSession = StubMicrophoneCaptureSession()
     let microphoneSessionFactory = SuccessfulMicrophoneCaptureSessionFactory(microphoneSession: microphoneSession)
+    let audioLevelMonitor = AudioLevelMonitor()
     let engine = ScreenCaptureRecordingEngine(
         writerFactory: SuccessfulRecordingOutputWriterFactory(),
         captureSessionFactory: captureSessionFactory,
         microphoneCaptureSessionFactory: microphoneSessionFactory,
+        audioLevelMonitor: audioLevelMonitor,
         idProvider: { UUID(uuidString: "00000000-0000-0000-0000-000000000123")! }
     )
     let configuration = resolvedConfiguration(
@@ -344,8 +346,12 @@ import Testing
     #expect(finalizedURL == session.temporaryFileURL)
     #expect(captureSessionFactory.startedConfigurations == [configuration])
     #expect(captureSessionFactory.writers.count == 1)
+    let injectedCaptureMonitor = try #require(captureSessionFactory.audioLevelMonitors.first ?? nil)
+    #expect(injectedCaptureMonitor === audioLevelMonitor)
     #expect(microphoneSessionFactory.startedDeviceIDs == ["BuiltInMic"])
     #expect(microphoneSessionFactory.writers.count == 1)
+    let injectedMicrophoneMonitor = try #require(microphoneSessionFactory.audioLevelMonitors.first ?? nil)
+    #expect(injectedMicrophoneMonitor === audioLevelMonitor)
     #expect(captureSession.didStop)
     #expect(microphoneSession.didStop)
 }
@@ -657,6 +663,7 @@ private final class SuccessfulRecordingCaptureSessionFactory: RecordingCaptureSe
     private let captureSession: StubRecordingCaptureSession
     private(set) var startedConfigurations: [ResolvedRecordingConfiguration] = []
     private(set) var writers: [any RecordingOutputWriter] = []
+    private(set) var audioLevelMonitors: [AudioLevelMonitor?] = []
 
     init(captureSession: StubRecordingCaptureSession) {
         self.captureSession = captureSession
@@ -664,10 +671,12 @@ private final class SuccessfulRecordingCaptureSessionFactory: RecordingCaptureSe
 
     func startCapture(
         configuration: ResolvedRecordingConfiguration,
-        writer: any RecordingOutputWriter
+        writer: any RecordingOutputWriter,
+        audioLevelMonitor: AudioLevelMonitor?
     ) throws -> any RecordingCaptureSession {
         startedConfigurations.append(configuration)
         writers.append(writer)
+        audioLevelMonitors.append(audioLevelMonitor)
         return captureSession
     }
 }
@@ -676,6 +685,7 @@ private final class SuccessfulMicrophoneCaptureSessionFactory: MicrophoneCapture
     private let microphoneSession: StubMicrophoneCaptureSession
     private(set) var startedDeviceIDs: [String] = []
     private(set) var writers: [any RecordingOutputWriter] = []
+    private(set) var audioLevelMonitors: [AudioLevelMonitor?] = []
 
     init(microphoneSession: StubMicrophoneCaptureSession) {
         self.microphoneSession = microphoneSession
@@ -683,10 +693,12 @@ private final class SuccessfulMicrophoneCaptureSessionFactory: MicrophoneCapture
 
     func startMicrophoneCapture(
         deviceID: String,
-        writer: any RecordingOutputWriter
+        writer: any RecordingOutputWriter,
+        audioLevelMonitor: AudioLevelMonitor?
     ) throws -> any MicrophoneCaptureSession {
         startedDeviceIDs.append(deviceID)
         writers.append(writer)
+        audioLevelMonitors.append(audioLevelMonitor)
         return microphoneSession
     }
 }
@@ -696,7 +708,8 @@ private struct FailingMicrophoneCaptureSessionFactory: MicrophoneCaptureSessionF
 
     func startMicrophoneCapture(
         deviceID: String,
-        writer: any RecordingOutputWriter
+        writer: any RecordingOutputWriter,
+        audioLevelMonitor: AudioLevelMonitor?
     ) throws -> any MicrophoneCaptureSession {
         throw error
     }

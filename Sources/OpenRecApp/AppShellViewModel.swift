@@ -7,6 +7,7 @@ protocol AppShellAdapter: AnyObject {
     var onHotkeyTriggered: (@MainActor @Sendable () -> Void)? { get set }
 
     func refresh() async -> AppShellSnapshot
+    func refreshAudioLevel() -> AppShellSnapshot
     func registerSavedHotkey() -> AppShellSnapshot
     func startRecording() -> AppShellSnapshot
     func stopRecording() -> AppShellSnapshot
@@ -30,6 +31,7 @@ final class AppShellViewModel: ObservableObject {
     @Published private(set) var windowRecordingWorkflow: WindowRecordingWorkflowState = .idle
     @Published private(set) var displayRecordingWorkflow: DisplayRecordingWorkflowState = .idle
     @Published private(set) var displaySelectionPresentationRequestCount = 0
+    @Published private(set) var windowSelectionPresentationRequestCount = 0
     var onRecordingStoppedBeforeSave: (() -> Void)?
 
     private let adapter: AppShellAdapter
@@ -134,10 +136,16 @@ final class AppShellViewModel: ObservableObject {
         snapshot.elapsedTimeText = currentElapsedTimeText(since: recordingStartedAt)
     }
 
+    func refreshAudioLevel() {
+        snapshot = snapshotWithCurrentElapsed(adapter.refreshAudioLevel())
+    }
+
     func toggleRecording() {
         switch snapshot.status {
         case .ready:
-            requestFullScreenRecording()
+            Task {
+                await requestWindowRecordingWorkflowPresentationAfterRefresh()
+            }
         case .recording:
             stopRecording()
         case .awaitingSave, .permissionRequired, .error:
@@ -240,6 +248,25 @@ final class AppShellViewModel: ObservableObject {
         return true
     }
 
+    func requestWindowRecordingWorkflowPresentation() {
+        let wasSelectingWindow: Bool
+        if case .selectingWindow = windowRecordingWorkflow {
+            wasSelectingWindow = true
+        } else {
+            wasSelectingWindow = false
+        }
+
+        guard requestWindowRecordingWorkflow() else { return }
+        if !wasSelectingWindow {
+            windowSelectionPresentationRequestCount += 1
+        }
+    }
+
+    func requestWindowRecordingWorkflowPresentationAfterRefresh() async {
+        await refresh()
+        requestWindowRecordingWorkflowPresentation()
+    }
+
     func requestApplicationRecordingWorkflow() -> Bool {
         guard snapshot.status == .ready else { return false }
         displayRecordingWorkflow = .idle
@@ -280,13 +307,22 @@ final class AppShellViewModel: ObservableObject {
             return
         }
 
-        guard let target = snapshot.availableTargets.first(where: { $0.id == targetID && $0.mode == .window }),
-              allowedTargetIDs?.contains(target.id) ?? true else {
+        guard let target = snapshot.availableTargets.first(where: { $0.id == targetID }) else {
             return
         }
 
-        if snapshot.mode != .window {
-            snapshot = adapter.selectMode(.window)
+        let isAllowedTarget: Bool
+        if let allowedTargetIDs {
+            isAllowedTarget = target.mode == .window && allowedTargetIDs.contains(target.id)
+        } else {
+            isAllowedTarget = target.mode == .window || target.mode == .display
+        }
+        guard isAllowedTarget else {
+            return
+        }
+
+        if snapshot.mode != target.mode {
+            snapshot = adapter.selectMode(target.mode)
         }
         snapshot = adapter.selectTarget(id: target.id)
         windowRecordingWorkflow = .configuringWindow(
