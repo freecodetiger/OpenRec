@@ -1,0 +1,258 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version tag, for example v0.1.0"
+        required: true
+        default: "v0.1.0"
+      prerelease:
+        description: "Publish as a GitHub prerelease"
+        type: boolean
+        required: true
+        default: false
+      require_notarization:
+        description: "Fail unless Developer ID signing and notarization both succeed"
+        type: boolean
+        required: true
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build and publish release
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve release version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            version="${{ inputs.version }}"
+          else
+            version="$GITHUB_REF_NAME"
+          fi
+
+          if ! printf '%s\n' "$version" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9._-]+)?$'; then
+            echo "Release version must look like v0.1.0, got: $version" >&2
+            exit 1
+          fi
+
+          artifact_version="$(printf '%s' "$version" | tr '/ :' '---')"
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
+          printf 'artifact_version=%s\n' "$artifact_version" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare release tag
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          version="${{ steps.version.outputs.version }}"
+          git fetch origin "refs/tags/$version:refs/tags/$version" || true
+
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            if git rev-parse -q --verify "refs/tags/$version" >/dev/null; then
+              git checkout --detach "$version"
+            else
+              git config user.name "github-actions[bot]"
+              git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+              git tag -a "$version" -m "OpenRec $version"
+              git push origin "refs/tags/$version"
+            fi
+          fi
+
+          git rev-parse --short HEAD
+
+      - name: Show Swift version
+        run: swift --version
+
+      - name: Build SwiftPM package
+        run: swift build
+
+      - name: Build SwiftPM package in release mode
+        run: swift build -c release
+
+      - name: Test SwiftPM package
+        run: swift test
+
+      - name: Check whitespace
+        run: git diff --check
+
+      - name: Smoke test exported source
+        run: scripts/test-release-artifact.sh
+
+      - name: Test release packaging script
+        run: scripts/test-package-release.sh
+
+      - name: Test production app bundle script
+        run: scripts/test-package-app.sh
+
+      - name: Test development app bundle script
+        run: scripts/test-launch-dev-app.sh
+
+      - name: Import Developer ID certificate
+        shell: bash
+        env:
+          OPENREC_CODESIGN_CERTIFICATE_BASE64: ${{ secrets.OPENREC_CODESIGN_CERTIFICATE_BASE64 }}
+          OPENREC_CODESIGN_CERTIFICATE_PASSWORD: ${{ secrets.OPENREC_CODESIGN_CERTIFICATE_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${OPENREC_CODESIGN_CERTIFICATE_BASE64:-}" ]; then
+            echo "No Developer ID certificate secret configured; release app will use ad-hoc signing."
+            exit 0
+          fi
+
+          certificate_path="$RUNNER_TEMP/openrec-developer-id.p12"
+          keychain_path="$RUNNER_TEMP/openrec-signing.keychain-db"
+          keychain_password="$(uuidgen)"
+
+          printf '%s' "$OPENREC_CODESIGN_CERTIFICATE_BASE64" | base64 --decode > "$certificate_path"
+          security create-keychain -p "$keychain_password" "$keychain_path"
+          security set-keychain-settings -lut 21600 "$keychain_path"
+          security unlock-keychain -p "$keychain_password" "$keychain_path"
+          security import "$certificate_path" \
+            -P "${OPENREC_CODESIGN_CERTIFICATE_PASSWORD:-}" \
+            -A \
+            -t cert \
+            -f pkcs12 \
+            -k "$keychain_path"
+          security list-keychains -d user -s "$keychain_path" $(security list-keychains -d user | sed 's/[ "]//g')
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s \
+            -k "$keychain_password" \
+            "$keychain_path"
+
+      - name: Package release artifacts
+        shell: bash
+        env:
+          OPENREC_RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          OPENREC_SIGN_IDENTITY: ${{ secrets.OPENREC_SIGN_IDENTITY }}
+          OPENREC_ENTITLEMENTS: ${{ secrets.OPENREC_ENTITLEMENTS }}
+          OPENREC_NOTARY_PROFILE: ${{ secrets.OPENREC_NOTARY_PROFILE }}
+          OPENREC_NOTARY_APPLE_ID: ${{ secrets.OPENREC_NOTARY_APPLE_ID }}
+          OPENREC_NOTARY_TEAM_ID: ${{ secrets.OPENREC_NOTARY_TEAM_ID }}
+          OPENREC_NOTARY_PASSWORD: ${{ secrets.OPENREC_NOTARY_PASSWORD }}
+          OPENREC_AD_HOC_SIGN: "1"
+          REQUIRE_NOTARIZATION: ${{ github.event_name == 'workflow_dispatch' && inputs.require_notarization || false }}
+        run: |
+          set -euo pipefail
+
+          export OPENREC_NOTARIZE=0
+          if [ "$REQUIRE_NOTARIZATION" = "true" ]; then
+            export OPENREC_NOTARIZE=1
+          fi
+
+          scripts/package-release.sh
+
+      - name: Verify release artifacts
+        shell: bash
+        env:
+          OPENREC_SIGN_IDENTITY: ${{ secrets.OPENREC_SIGN_IDENTITY }}
+        run: |
+          set -euo pipefail
+
+          version="${{ steps.version.outputs.artifact_version }}"
+          source_zip="dist/OpenRec-$version.zip"
+          app_zip="dist/OpenRec-$version-macos.zip"
+
+          test -f "$source_zip"
+          test -f "$source_zip.sha256"
+          test -f "$app_zip"
+          test -f "$app_zip.sha256"
+          shasum -a 256 -c "$source_zip.sha256"
+          shasum -a 256 -c "$app_zip.sha256"
+
+          scripts/test-release-artifact.sh "$source_zip"
+
+          app_dir="$RUNNER_TEMP/openrec-release-app"
+          rm -rf "$app_dir"
+          mkdir -p "$app_dir"
+          /usr/bin/unzip -q "$app_zip" -d "$app_dir"
+          codesign --verify --deep --strict --verbose=2 "$app_dir/OpenRec.app"
+
+          if [ -n "${OPENREC_SIGN_IDENTITY:-}" ]; then
+            spctl -a -vv -t exec "$app_dir/OpenRec.app"
+            xcrun stapler validate "$app_dir/OpenRec.app"
+          fi
+
+      - name: Write release notes
+        shell: bash
+        env:
+          OPENREC_SIGN_IDENTITY: ${{ secrets.OPENREC_SIGN_IDENTITY }}
+        run: |
+          set -euo pipefail
+
+          version="${{ steps.version.outputs.version }}"
+          artifact_version="${{ steps.version.outputs.artifact_version }}"
+          app_artifact="OpenRec-$artifact_version-macos.zip"
+          source_artifact="OpenRec-$artifact_version.zip"
+
+          {
+            printf '# OpenRec %s\n\n' "$version"
+            printf 'OpenRec %s is the first formal release of the local macOS screen recorder.\n\n' "$version"
+            printf 'Artifacts:\n'
+            printf -- '- `%s`: packaged macOS app bundle.\n' "$app_artifact"
+            printf -- '- `%s`: source archive for the tagged commit.\n' "$source_artifact"
+            printf -- '- `*.sha256`: SHA-256 checksums for artifact verification.\n\n'
+            if [ -n "${OPENREC_SIGN_IDENTITY:-}" ]; then
+              printf 'The macOS app artifact was built with Developer ID signing. If notarization credentials were configured, notarization and stapling were also completed by CI.\n'
+            else
+              printf 'The macOS app artifact is ad-hoc signed because Developer ID signing secrets were not configured. macOS Gatekeeper may require manual approval before first launch.\n'
+            fi
+          } > dist/release-notes.md
+
+      - name: Publish GitHub release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PRERELEASE: ${{ github.event_name == 'workflow_dispatch' && inputs.prerelease || false }}
+        run: |
+          set -euo pipefail
+
+          version="${{ steps.version.outputs.version }}"
+          artifact_version="${{ steps.version.outputs.artifact_version }}"
+          assets=(
+            "dist/OpenRec-$artifact_version.zip"
+            "dist/OpenRec-$artifact_version.zip.sha256"
+            "dist/OpenRec-$artifact_version-macos.zip"
+            "dist/OpenRec-$artifact_version-macos.zip.sha256"
+          )
+
+          if gh release view "$version" >/dev/null 2>&1; then
+            gh release upload "$version" "${assets[@]}" --clobber
+            gh release edit "$version" --notes-file dist/release-notes.md
+          else
+            args=(
+              release create "$version"
+              "${assets[@]}"
+              --verify-tag
+              --title "OpenRec $version"
+              --notes-file dist/release-notes.md
+            )
+            if [ "$PRERELEASE" = "true" ]; then
+              args+=(--prerelease)
+            else
+              args+=(--latest)
+            fi
+            gh "${args[@]}"
+          fi

@@ -45,7 +45,7 @@ swift run OpenRecApp
 
 These are developer launch paths, not end-user app distribution paths. macOS permissions such as Screen Recording, Microphone, and global hotkey access must still be granted on real hardware.
 
-For release tags, CI creates release artifacts:
+For release tags, GitHub Actions builds, tests, packages, verifies, and publishes release artifacts:
 
 ```sh
 scripts/package-release.sh
@@ -67,7 +67,9 @@ scripts/test-release-artifact.sh dist/OpenRec-<tag>.zip
 
 For unusually constrained CI jobs, `OPENREC_RELEASE_SMOKE_COMMAND` can replace the default `swift test` command with another lightweight validation command.
 
-The package script also creates `dist/OpenRec-<version>-macos.zip`, which contains `OpenRec.app`, plus a `.sha256` checksum file. Without Developer ID signing variables, this app artifact is unsigned or ad-hoc signed only. It does not include a Sparkle feed, updater, installer, telemetry, or network service.
+The package script also creates `dist/OpenRec-<version>-macos.zip`, which contains `OpenRec.app`, plus a `.sha256` checksum file. Without Developer ID signing variables, the GitHub release app artifact is ad-hoc signed only. It does not include a Sparkle feed, updater, installer, telemetry, or network service.
+
+To publish `v0.1.0`, either push a matching tag or run the `Release` workflow manually from GitHub Actions with `version=v0.1.0`. Manual runs create the tag when it does not already exist, then publish or update the GitHub Release.
 
 ## Privacy
 
@@ -119,6 +121,15 @@ Environment variables:
 - `OPENREC_PACKAGE_SOURCE_ZIP=0`: skip the source ZIP and only create the macOS app ZIP.
 
 With `OPENREC_SIGN_IDENTITY` and notary credentials set, packaging uses hardened runtime signing, `xcrun notarytool submit --wait`, `xcrun stapler staple`, then creates the final `dist/OpenRec-<version>-macos.zip` and `dist/OpenRec-<version>-macos.zip.sha256`.
+
+GitHub Actions release signing secrets:
+
+- `OPENREC_CODESIGN_CERTIFICATE_BASE64`: base64-encoded Developer ID Application `.p12` certificate.
+- `OPENREC_CODESIGN_CERTIFICATE_PASSWORD`: password for the `.p12` certificate.
+- `OPENREC_SIGN_IDENTITY`: exact Developer ID Application identity name.
+- `OPENREC_NOTARY_APPLE_ID`, `OPENREC_NOTARY_TEAM_ID`, `OPENREC_NOTARY_PASSWORD`: Apple notarization credentials. Use an app-specific password for `OPENREC_NOTARY_PASSWORD`.
+
+When these secrets are missing, the release workflow still builds and publishes an ad-hoc signed app ZIP for open-source distribution review.
 
 ## License
 
