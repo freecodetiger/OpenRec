@@ -375,7 +375,9 @@ import Foundation
 
     viewModel.startHotkeyMonitoring()
     registry.trigger(hotkey)
-    try await Task.sleep(for: .milliseconds(50))
+    try await waitForCondition {
+        viewModel.windowRecordingWorkflow == .selectingWindow(previousMode: .display, previousTargetID: "display-1")
+    }
 
     #expect(viewModel.windowRecordingWorkflow == .selectingWindow(previousMode: .display, previousTargetID: "display-1"))
     #expect(viewModel.windowSelectionPresentationRequestCount == 1)
@@ -407,7 +409,9 @@ import Foundation
 
     viewModel.startHotkeyMonitoring()
     registry.trigger(hotkey)
-    try await Task.sleep(for: .milliseconds(50))
+    try await waitForCondition {
+        viewModel.windowRecordingWorkflow == .selectingWindow(previousMode: .display, previousTargetID: "display-1")
+    }
 
     #expect(viewModel.windowRecordingWorkflow == .selectingWindow(previousMode: .display, previousTargetID: "display-1"))
     #expect(viewModel.windowSelectionPresentationRequestCount == 1)
@@ -451,7 +455,13 @@ import Foundation
 
     viewModel.startHotkeyMonitoring()
     registry.trigger(hotkey)
-    try await Task.sleep(for: .milliseconds(50))
+    try await waitForCondition {
+        adapter.refreshCallCount == 1 &&
+            viewModel.windowRecordingWorkflow == .selectingWindow(
+                previousMode: .display,
+                previousTargetID: "display-1"
+            )
+    }
 
     let selectedWindow = viewModel.snapshot.availableTargets.first { $0.id == "window-42" }
     #expect(adapter.refreshCallCount == 1)
@@ -649,7 +659,9 @@ import Foundation
     let viewModel = AppShellViewModel(adapter: adapter)
 
     viewModel.refreshPermissions()
-    try await Task.sleep(for: .milliseconds(50))
+    try await waitForCondition {
+        adapter.refreshCallCount == 1 && viewModel.snapshot.status == .ready
+    }
 
     #expect(adapter.refreshCallCount == 1)
     #expect(viewModel.snapshot.status == .ready)
@@ -667,7 +679,9 @@ import Foundation
     let viewModel = AppShellViewModel(adapter: adapter)
 
     viewModel.requestPermission(for: .microphone)
-    try await Task.sleep(for: .milliseconds(50))
+    try await waitForCondition {
+        adapter.requestedPermissions == [.microphone] && viewModel.snapshot.status == .ready
+    }
 
     #expect(adapter.requestedPermissions == [.microphone])
     #expect(viewModel.snapshot.status == .ready)
@@ -2326,6 +2340,19 @@ private func temporarySettingsDirectory() -> URL {
     FileManager.default.temporaryDirectory
         .appending(path: "OpenRecAppTests")
         .appending(path: UUID().uuidString)
+}
+
+@MainActor
+private func waitForCondition(
+    attempts: Int = 100,
+    _ predicate: @escaping @MainActor () -> Bool
+) async throws {
+    for _ in 0..<attempts {
+        if predicate() {
+            return
+        }
+        try await Task.sleep(for: .milliseconds(10))
+    }
 }
 
 private struct NoOpRecordingPermissionValidator: RecordingPermissionValidating {
