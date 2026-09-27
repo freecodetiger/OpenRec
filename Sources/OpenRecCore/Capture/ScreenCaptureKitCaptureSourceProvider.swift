@@ -36,15 +36,22 @@ public struct ScreenCaptureKitCaptureSourceProvider: CaptureSourceProvider {
                 owningApplicationName: window.owningApplication?.applicationName,
                 pixelSize: pixelSize,
                 screenFrame: window.frame,
-                isAvailable: true
+                // isOnScreen keeps every app's never-shown helper windows out of the
+                // picker. They report plausible frames that overlap real windows, so
+                // they would otherwise win the hover test on z-order alone.
+                isAvailable: window.isOnScreen
             )
         }
     }
 
     private func shareableContent() async throws -> SCShareableContent {
+        // onScreenWindowsOnly must stay false: it limits results to the current
+        // Space, which hides fullscreen apps (each owns its own Space) as well as
+        // anything hidden by the act of opening the menu bar. Listing every window
+        // and filtering in isRecordableWindow is what keeps the picker complete.
         try await SCShareableContent.excludingDesktopWindows(
             true,
-            onScreenWindowsOnly: true
+            onScreenWindowsOnly: false
         )
     }
 

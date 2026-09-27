@@ -347,9 +347,11 @@ struct ScreenCaptureKitSystemShareableContentProvider: ScreenCaptureKitShareable
         let semaphore = DispatchSemaphore(value: 0)
         let box = ShareableContentBox()
 
+        // See ScreenCaptureKitCaptureSourceProvider: onScreenWindowsOnly would make
+        // a window picked from another Space unresolvable at start-of-recording.
         SCShareableContent.getExcludingDesktopWindows(
             false,
-            onScreenWindowsOnly: true
+            onScreenWindowsOnly: false
         ) { content, error in
             if let error {
                 box.store(.failure(error))
