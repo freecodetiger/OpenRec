@@ -345,36 +345,50 @@ struct ScreenCaptureKitSystemShareableContentProvider: ScreenCaptureKitShareable
 
     private func shareableContent() throws -> SCShareableContent {
         let semaphore = DispatchSemaphore(value: 0)
-        let lock = NSLock()
-        var result: Result<SCShareableContent, Error>?
+        let box = ShareableContentBox()
 
         SCShareableContent.getExcludingDesktopWindows(
             false,
             onScreenWindowsOnly: true
         ) { content, error in
-            lock.withLock {
-                if let error {
-                    result = .failure(error)
-                } else if let content {
-                    result = .success(content)
-                } else {
-                    result = .failure(
+            if let error {
+                box.store(.failure(error))
+            } else if let content {
+                box.store(.success(content))
+            } else {
+                box.store(
+                    .failure(
                         OpenRecError.captureConfigurationInvalid(
                             "ScreenCaptureKit returned no shareable content."
                         )
                     )
-                }
+                )
             }
             semaphore.signal()
         }
 
         semaphore.wait()
 
-        return try lock.withLock {
-            try result?.get() ?? {
-                throw OpenRecError.unknown("ScreenCaptureKit shareable content returned no result.")
-            }()
-        }
+        return try box.take()?.get() ?? {
+            throw OpenRecError.unknown("ScreenCaptureKit shareable content returned no result.")
+        }()
+    }
+}
+
+// ScreenCaptureKit's completion handler is @Sendable, so the hand-off back to the
+// synchronous caller cannot be a captured `var`. The box is the `let` that gets
+// captured instead. ponytail: @unchecked Sendable is sound because the only read
+// happens after `semaphore.wait()`, and every access is lock-guarded.
+private final class ShareableContentBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var result: Result<SCShareableContent, Error>?
+
+    func store(_ result: Result<SCShareableContent, Error>) {
+        lock.withLock { self.result = result }
+    }
+
+    func take() -> Result<SCShareableContent, Error>? {
+        lock.withLock { result }
     }
 }
 
