@@ -5,7 +5,6 @@ import SwiftUI
 struct OpenRecApplication: App {
     @Environment(\.openWindow) private var openWindow
     @StateObject private var viewModel: AppShellViewModel
-    @StateObject private var statusItemController: AppKitStatusItemController
     @StateObject private var windowRecordingWorkflowCoordinator: WindowRecordingWorkflowCoordinator
     @State private var onboardingPresentationGate = OnboardingWindowPresentationGate()
     private let onboardingWindowPresenter = UserWindowPresenter()
@@ -25,29 +24,18 @@ struct OpenRecApplication: App {
         model.onRecordingStoppedBeforeSave = { [weak workflowCoordinator] in
             workflowCoordinator?.dismissActivePanels()
         }
-        let statusController = AppKitStatusItemController(viewModel: model)
-        workflowCoordinator.closeMenu = { [weak statusController] in
-            statusController?.closePopover()
+        workflowCoordinator.closeMenu = {
             NSApp.keyWindow?.close()
         }
-        statusController.onRequestWindowRecordingWorkflow = { [weak workflowCoordinator] in
-            workflowCoordinator?.begin()
-        }
-        statusController.onRequestApplicationRecordingWorkflow = { [weak workflowCoordinator] in
-            workflowCoordinator?.beginApplication()
-        }
-        DispatchQueue.main.async {
-            statusController.installIfNeeded()
-            Task {
-                await AppLaunchRefresher(
-                    viewModel: model,
-                    statusSymbolRefresher: statusController
-                ).refreshAfterLaunch()
-            }
+        Task {
+            await model.refresh()
         }
         _viewModel = StateObject(wrappedValue: model)
-        _statusItemController = StateObject(wrappedValue: statusController)
         _windowRecordingWorkflowCoordinator = StateObject(wrappedValue: workflowCoordinator)
+    }
+
+    private func closeMenuBarWindow() {
+        NSApp.keyWindow?.close()
     }
 
     var body: some Scene {
@@ -66,7 +54,6 @@ struct OpenRecApplication: App {
         }
         .menuBarExtraStyle(.window)
         .onChange(of: viewModel.snapshot.status, initial: true) { oldStatus, newStatus in
-            statusItemController.refreshSymbol()
             switch (oldStatus, newStatus) {
             case (_, .recording):
                 windowRecordingWorkflowCoordinator.recordingDidStart()
@@ -84,12 +71,12 @@ struct OpenRecApplication: App {
         }
         .onChange(of: viewModel.displaySelectionPresentationRequestCount) { oldCount, newCount in
             guard newCount > oldCount else { return }
-            statusItemController.closePopover()
+            closeMenuBarWindow()
             openWindow(id: "source-selection")
         }
         .onChange(of: viewModel.windowSelectionPresentationRequestCount) { oldCount, newCount in
             guard newCount > oldCount else { return }
-            statusItemController.closePopover()
+            closeMenuBarWindow()
             windowRecordingWorkflowCoordinator.presentWindowSelectionForCurrentWorkflow()
         }
 

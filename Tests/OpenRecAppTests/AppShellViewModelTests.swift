@@ -2282,24 +2282,6 @@ private func awaitingSaveAdapter(
 }
 
 @MainActor
-@Test func launchRefreshUpdatesSnapshotAndMenuBarSymbolBeforePopoverOpens() async {
-    let adapter = MockAppCoreAdapter(initialSnapshot: .error)
-    adapter.permissionRefreshSnapshot = .ready
-    let viewModel = AppShellViewModel(adapter: adapter)
-    let symbolRefresher = SpyStatusSymbolRefresher()
-    let launchRefresher = AppLaunchRefresher(
-        viewModel: viewModel,
-        statusSymbolRefresher: symbolRefresher
-    )
-
-    await launchRefresher.refreshAfterLaunch()
-
-    #expect(adapter.refreshCallCount == 1)
-    #expect(viewModel.snapshot.status == .ready)
-    #expect(symbolRefresher.refreshCallCount == 1)
-}
-
-@MainActor
 private func editablePreferencesAdapter(
     settingsStore: SettingsStore,
     hotkeyManager: HotkeyManager = HotkeyManager(registry: InMemoryHotkeyRegistry())
@@ -2472,15 +2454,6 @@ private final class SpyRecordingFileMover: RecordingFileMoving {
 }
 
 private struct TestSaveMoveError: Error {}
-
-@MainActor
-private final class SpyStatusSymbolRefresher: StatusSymbolRefreshing {
-    private(set) var refreshCallCount = 0
-
-    func refreshSymbol() {
-        refreshCallCount += 1
-    }
-}
 
 @MainActor
 private final class SpyForegroundActivator: ForegroundActivating {
