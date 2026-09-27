@@ -16,9 +16,10 @@ Copy this block for each release candidate and complete it before approving the 
 | Artifact type: source ZIP, SwiftPM checkout, unsigned/ad-hoc app bundle, signed/notarized app bundle | |
 | Artifact SHA-256 | |
 | macOS version | |
+| Xcode / Swift toolchain version | |
 | Mac model | |
 | Hardware: Apple Silicon or Intel | |
-| Display setup: single-screen or multi-screen | |
+| Display setup: single-screen or multi-screen, and scaling (for example a 2x built-in plus a 1x external) | |
 | Window recording result | |
 | App window recording result | |
 | Microphone device and result | |
@@ -29,13 +30,16 @@ Copy this block for each release candidate and complete it before approving the 
 | Overall result: pass/fail | |
 | Blocking issues | |
 
+A candidate is blocked when any of these fail: the release artifact installs and launches, a recording produces a playable file with audio and video in sync, save and discard leave no stale temporary file, permission changes are detected, or the app makes a network request. Everything else is a known issue to document, not a blocker.
+
 ## Automated Verification
 
 These checks can run in CI or on a developer machine without exercising real capture permissions.
 
 - [ ] `swift build` succeeds on macOS 14 or later.
 - [ ] `swift build -c release` succeeds on macOS 14 or later.
-- [ ] `swift test` succeeds on macOS 14 or later.
+- [ ] `scripts/ci-swift-test.sh` succeeds. This is the gate the release workflow uses, and it skips the `avAssetRecordingOutputWriter` encoding tests, so it does not cover whether a recording is writable, correctly interleaved, or in sync.
+- [ ] `swift test` succeeds locally, including the `avAssetRecordingOutputWriter` tests that the CI gate skips.
 - [ ] `git diff --check` reports no whitespace errors.
 - [ ] `scripts/test-release-artifact.sh` exports `git archive HEAD` to a temporary directory and runs the release artifact smoke command.
 - [ ] `scripts/test-package-release.sh` validates unsigned app packaging, checksum output, artifact naming, and signing/notarization dry-run logging.
@@ -67,7 +71,7 @@ These checks require real macOS hardware because ScreenCaptureKit, permissions, 
 - [ ] App launches through the current supported path: `swift run OpenRecApp`, the development app wrapper, or the packaged release app artifact under test.
 - [ ] First launch explains Screen Recording permission and links to System Settings.
 - [ ] First launch explains Microphone permission and links to System Settings.
-- [ ] First launch explains Accessibility or Input Monitoring permission if required by the final hotkey or window-selection implementation.
+- [ ] Onboarding asks only for the permissions the app uses: Screen Recording and Microphone. Accessibility and Input Monitoring must never be requested; the global hotkey uses Carbon and needs neither.
 - [ ] Permission status can be refreshed after granting, denying, or revoking in System Settings.
 - [ ] Starting a recording is blocked with a recoverable error when Screen Recording permission is missing.
 - [ ] Microphone denial is handled before recording starts or by requiring a valid microphone selection.
@@ -86,7 +90,9 @@ These checks require real macOS hardware because ScreenCaptureKit, permissions, 
 
 - [ ] Window selection mode opens from the window recording path.
 - [ ] Eligible windows highlight on hover without obscuring the selected window.
-- [ ] Overlay labels, outlines, and click targets stay aligned on Retina and non-Retina displays.
+- [ ] A fullscreen app's window is selectable. Fullscreen windows own their own Space, which a current-Space-only query would miss.
+- [ ] Hidden, minimised, and other-Space windows are never offered and never steal the highlight. Apps such as QQ and WeChat keep never-shown helper windows whose reported frames overlap real windows.
+- [ ] Highlight outlines and click targets stay aligned with the real window bounds, including on a mixed-scaling setup where one display is 2x and another is 1x.
 - [ ] Multi-display overlay behavior is understandable and does not select windows from the wrong display.
 - [ ] Clicking a highlighted window selects that window.
 - [ ] Esc cancels window selection without starting a recording.
@@ -168,7 +174,7 @@ Test at least one display recording and one window recording across the supporte
 - [ ] Discard removes the temporary recording.
 - [ ] Save failure due to permissions or unavailable destination is recoverable.
 - [ ] App returns to the ready state after save, discard, or save-panel cancellation.
-- [ ] Future retry-save behavior is not presented as a current user-visible option.
+- [ ] No user-visible affordance offers to retry a save that was already cancelled.
 
 ## Offline Behavior
 

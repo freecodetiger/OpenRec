@@ -30,4 +30,5 @@ Rules:
 - Writes must be atomic.
 - Invalid JSON is renamed to `settings.invalid.json`, then defaults are recreated.
 - Recording history and recording file paths must not be stored.
+- `defaultMode` is written for forward compatibility, but v0.1 always restores `display` on launch and offers no way to change it.
 

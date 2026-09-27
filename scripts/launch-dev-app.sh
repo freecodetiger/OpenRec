@@ -27,6 +27,7 @@ cat > "$APP_PATH/Contents/Info.plist" <<PLIST
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>NSMicrophoneUsageDescription</key><string>OpenRec records microphone audio when selected for local screen recordings.</string>
+  <key>LSUIElement</key><true/>
 </dict>
 </plist>
 PLIST
