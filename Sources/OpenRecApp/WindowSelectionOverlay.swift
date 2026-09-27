@@ -231,6 +231,8 @@ final class WindowSelectionOverlayPresenter {
     private var persistsAfterSelection = false
     private var lockedSelectionTargetID: String?
 
+    private var activationObserver: NSObjectProtocol?
+
     var isLockedSelectionVisible: Bool {
         lockedSelectionTargetID != nil
     }
@@ -259,17 +261,50 @@ final class WindowSelectionOverlayPresenter {
                     self?.cancelSelection()
                 }
             )
-            overlayWindow.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
             overlayWindow.orderFrontRegardless()
             return overlayWindow
         }
 
         renderOverlays(selectedTargetID: nil, isInteractive: true)
-        windows.first?.makeKey()
+        windows.first?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+
+        holdActivation()
+    }
+
+    /// Closing the menu bar window hands activation back to whichever app was
+    /// frontmost before OpenRec, and macOS delivers that a few hundred milliseconds
+    /// after `present()` — long after the activation above. The overlay keeps its
+    /// pixels but loses key status, so Escape stops arriving and the next click is
+    /// swallowed as an activation click. Reclaim it for as long as the overlay is up.
+    private func holdActivation() {
+        stopHoldingActivation()
+        activationObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didResignActiveNotification,
+            object: NSApp,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.reclaimActivation()
+            }
+        }
+    }
+
+    private func stopHoldingActivation() {
+        if let activationObserver {
+            NotificationCenter.default.removeObserver(activationObserver)
+        }
+        activationObserver = nil
+    }
+
+    private func reclaimActivation() {
+        guard !windows.isEmpty else { return }
+        NSApp.activate(ignoringOtherApps: true)
+        windows.first?.makeKeyAndOrderFront(nil)
     }
 
     func dismiss() {
+        stopHoldingActivation()
         windows.forEach { $0.close() }
         windows = []
         targets = []
@@ -332,7 +367,7 @@ private final class WindowSelectionOverlayWindow: NSPanel {
         self.onCancel = onCancel
         super.init(
             contentRect: overlayFrame,
-            styleMask: [.borderless],
+            styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
@@ -340,12 +375,24 @@ private final class WindowSelectionOverlayWindow: NSPanel {
         backgroundColor = .clear
         hasShadow = false
         level = .screenSaver
+        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         hidesOnDeactivate = false
         ignoresMouseEvents = false
     }
 
     override var canBecomeKey: Bool {
         true
+    }
+
+    /// Escape has to be caught before the responder chain hands the event to the
+    /// hosting view, otherwise SwiftUI consumes it and `keyDown` never runs.
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if event.keyCode == 53 {
+            onCancel()
+            return true
+        }
+
+        return super.performKeyEquivalent(with: event)
     }
 
     override func keyDown(with event: NSEvent) {
@@ -411,12 +458,6 @@ struct WindowSelectionOverlayView: View {
                 }
             }
             .ignoresSafeArea()
-        }
-        .focusable()
-        .focusEffectDisabled()
-        .onKeyPress(.escape) {
-            cancel()
-            return .handled
         }
     }
 
