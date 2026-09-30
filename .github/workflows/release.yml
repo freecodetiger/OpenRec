@@ -193,9 +193,14 @@ jobs:
           test -f "$app_zip.sha256"
           test -f "$dmg"
           test -f "$dmg.sha256"
-          shasum -a 256 -c "$source_zip.sha256"
-          shasum -a 256 -c "$app_zip.sha256"
-          shasum -a 256 -c "$dmg.sha256"
+          # Checksums name the bare artifact so downloaders can verify them, which
+          # means they only resolve from the directory the artifact sits in.
+          (
+            cd dist
+            shasum -a 256 -c "$(basename "$source_zip.sha256")"
+            shasum -a 256 -c "$(basename "$app_zip.sha256")"
+            shasum -a 256 -c "$(basename "$dmg.sha256")"
+          )
           hdiutil verify "$dmg"
 
           scripts/test-release-artifact.sh "$source_zip"
