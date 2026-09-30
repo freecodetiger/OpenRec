@@ -86,6 +86,17 @@ fi
 expected_checksum="$(shasum -a 256 "$APP_ZIP_PATH" | awk '{print $1}')"
 actual_checksum="$(awk '{print $1}' "$CHECKSUM_PATH")"
 test "$expected_checksum" = "$actual_checksum"
+
+# The published checksum must reference the bare filename. If it embeds an
+# absolute build path, `shasum -c` fails for everyone who downloads it.
+if grep -q "/" "$CHECKSUM_PATH"; then
+    echo "Checksum file must not embed an absolute path: $(cat "$CHECKSUM_PATH")" >&2
+    exit 1
+fi
+(
+    cd "$DIST_DIR"
+    shasum -a 256 -c "$(basename "$CHECKSUM_PATH")" >/dev/null
+)
 assert_contains "$UNSIGNED_LOG" "Signing: unsigned"
 assert_contains "$UNSIGNED_LOG" "Created $SOURCE_ZIP_PATH"
 assert_contains "$UNSIGNED_LOG" "Created $APP_ZIP_PATH"

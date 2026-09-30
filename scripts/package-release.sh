@@ -83,7 +83,14 @@ create_app_zip() {
 
 create_checksum() {
     artifact_path="$1"
-    shasum -a 256 "$artifact_path" > "$artifact_path.sha256"
+    artifact_dir="$(dirname "$artifact_path")"
+    artifact_name="$(basename "$artifact_path")"
+    # Hash the bare filename so the published checksum verifies from the download
+    # directory, rather than embedding this machine's absolute path.
+    (
+        cd "$artifact_dir"
+        shasum -a 256 "$artifact_name" > "$artifact_name.sha256"
+    )
     echo "Created $artifact_path.sha256"
 }
 
