@@ -13,6 +13,10 @@ rm -rf "$APP_PATH"
 mkdir -p "$APP_PATH/Contents/MacOS" "$APP_PATH/Contents/Resources"
 cp "$BIN_DIR/OpenRecApp" "$EXECUTABLE_PATH"
 
+if [ -f "$ROOT_DIR/Resources/AppIcon.icns" ]; then
+    cp "$ROOT_DIR/Resources/AppIcon.icns" "$APP_PATH/Contents/Resources/AppIcon.icns"
+fi
+
 cat > "$APP_PATH/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -24,6 +28,7 @@ cat > "$APP_PATH/Contents/Info.plist" <<PLIST
   <key>CFBundleVersion</key><string>0.1.0-dev</string>
   <key>CFBundleShortVersionString</key><string>0.1.0</string>
   <key>CFBundleExecutable</key><string>OpenRecApp</string>
+  <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>NSMicrophoneUsageDescription</key><string>OpenRec records microphone audio when selected for local screen recordings.</string>

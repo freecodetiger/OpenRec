@@ -135,6 +135,7 @@ build_release_app() {
   <key>CFBundleVersion</key><string>$(xml_escape "$build_version")</string>
   <key>CFBundleShortVersionString</key><string>$(xml_escape "$short_version")</string>
   <key>CFBundleExecutable</key><string>$EXECUTABLE_NAME</string>
+  <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>NSMicrophoneUsageDescription</key><string>OpenRec records microphone audio when selected for local screen recordings.</string>
@@ -160,6 +161,11 @@ stage_app() {
         fi
     else
         build_release_app "$APP_PATH" "$VERSION"
+    fi
+
+    if [ -f "$ROOT_DIR/Resources/AppIcon.icns" ]; then
+        mkdir -p "$APP_PATH/Contents/Resources"
+        cp "$ROOT_DIR/Resources/AppIcon.icns" "$APP_PATH/Contents/Resources/AppIcon.icns"
     fi
 }
 
