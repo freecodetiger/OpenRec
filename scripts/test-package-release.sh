@@ -13,6 +13,7 @@ CHECKSUM_PATH="$APP_ZIP_PATH.sha256"
 UNSIGNED_LOG="/tmp/openrec-package-release-unsigned.log"
 DRY_RUN_LOG="/tmp/openrec-package-release-dry-run.log"
 NOTARIZE_MISSING_IDENTITY_LOG="/tmp/openrec-package-release-notarize-missing-identity.log"
+DMG_DRY_RUN_LOG="/tmp/openrec-package-release-dmg-dry-run.log"
 
 create_fixture_app() {
     rm -rf "$FIXTURE_DIR"
@@ -110,6 +111,21 @@ assert_contains "$DRY_RUN_LOG" "--wait"
 assert_contains "$DRY_RUN_LOG" "DRY RUN: xcrun stapler staple"
 assert_not_contains "$DRY_RUN_LOG" "app-password-secret"
 
+OPENREC_APP_PATH="$FIXTURE_APP" \
+OPENREC_RELEASE_VERSION="$VERSION" \
+GITHUB_REF_NAME="$VERSION" \
+OPENREC_PACKAGE_DMG=1 \
+OPENREC_SIGN_IDENTITY="Developer ID Application: Example, Inc. (TEAMID1234)" \
+OPENREC_NOTARY_PROFILE="openrec-test-profile" \
+OPENREC_DRY_RUN=1 \
+"$ROOT_DIR/scripts/package-release.sh" >"$DMG_DRY_RUN_LOG"
+
+assert_contains "$DMG_DRY_RUN_LOG" "--entitlements $ROOT_DIR/scripts/OpenRec.entitlements"
+assert_contains "$DMG_DRY_RUN_LOG" "DRY RUN: hdiutil create -volname OpenRec"
+assert_contains "$DMG_DRY_RUN_LOG" "DRY RUN: codesign --force --timestamp --sign"
+assert_contains "$DMG_DRY_RUN_LOG" "Staple: dmg"
+assert_contains "$DMG_DRY_RUN_LOG" "--keychain-profile openrec-test-profile"
+
 if OPENREC_APP_PATH="$FIXTURE_APP" \
     OPENREC_RELEASE_VERSION="$VERSION" \
     GITHUB_REF_NAME="$VERSION" \
@@ -121,6 +137,6 @@ fi
 assert_contains "$NOTARIZE_MISSING_IDENTITY_LOG" "OPENREC_NOTARIZE=1 requires OPENREC_SIGN_IDENTITY"
 
 rm -rf "$DIST_DIR"
-rm -f "$UNSIGNED_LOG" "$DRY_RUN_LOG" "$NOTARIZE_MISSING_IDENTITY_LOG"
+rm -f "$UNSIGNED_LOG" "$DRY_RUN_LOG" "$NOTARIZE_MISSING_IDENTITY_LOG" "$DMG_DRY_RUN_LOG"
 
 echo "package-release.sh test passed"

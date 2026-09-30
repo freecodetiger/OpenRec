@@ -113,7 +113,7 @@ Environment variables:
 - `OPENREC_BUNDLE_ID`: overrides the production bundle identifier, which defaults to `com.freecodetiger.OpenRec`.
 - `OPENREC_SHORT_VERSION`, `OPENREC_BUILD_VERSION`: override generated bundle version metadata.
 - `OPENREC_SIGN_IDENTITY`: Developer ID Application identity for hardened runtime signing.
-- `OPENREC_ENTITLEMENTS`: optional entitlements plist path for `codesign`.
+- `OPENREC_ENTITLEMENTS`: entitlements plist path for `codesign`. Defaults to `scripts/OpenRec.entitlements`, which carries `com.apple.security.device.audio-input`; hardened runtime denies microphone capture without it.
 - `OPENREC_NOTARY_PROFILE`: notarytool keychain profile.
 - `OPENREC_NOTARY_APPLE_ID`, `OPENREC_NOTARY_TEAM_ID`, `OPENREC_NOTARY_PASSWORD`: Apple ID notarization credentials used when no profile is supplied.
 - `OPENREC_NOTARIZE=1`: require notarization; packaging fails if Developer ID signing identity or notary credentials are missing.
@@ -121,8 +121,24 @@ Environment variables:
 - `OPENREC_SKIP_CODESIGN=1`: leave the app unsigned even if signing-related variables are present.
 - `OPENREC_DRY_RUN=1`: print signing, notarization, and stapler commands without running them.
 - `OPENREC_PACKAGE_SOURCE_ZIP=0`: skip the source ZIP and only create the macOS app ZIP.
+- `OPENREC_PACKAGE_DMG=1`: also create `dist/OpenRec-<version>.dmg` containing the app and an `/Applications` symlink. The DMG is signed, notarized, and stapled in addition to the app.
 
-With `OPENREC_SIGN_IDENTITY` and notary credentials set, packaging uses hardened runtime signing, `xcrun notarytool submit --wait`, `xcrun stapler staple`, then creates the final `dist/OpenRec-<version>-macos.zip` and `dist/OpenRec-<version>-macos.zip.sha256`.
+With `OPENREC_SIGN_IDENTITY` and notary credentials set, packaging uses hardened runtime signing, `xcrun notarytool submit --wait`, `xcrun stapler staple`, then creates the final `dist/OpenRec-<version>-macos.zip` and `dist/OpenRec-<version>-macos.zip.sha256`. With `OPENREC_PACKAGE_DMG=1` the same steps run against `dist/OpenRec-<version>.dmg` after the app is signed and stapled, so the disk image ships an already-stapled app.
+
+To build a signed and notarized DMG locally, store notarization credentials once and reference the profile:
+
+```sh
+xcrun notarytool store-credentials "OpenRec" \
+    --apple-id "<your-apple-id>" \
+    --team-id U6Y3X5W7T2
+
+OPENREC_PACKAGE_DMG=1 \
+OPENREC_PACKAGE_SOURCE_ZIP=0 \
+OPENREC_SIGN_IDENTITY="Developer ID Application: pengcheng zhang (U6Y3X5W7T2)" \
+OPENREC_NOTARY_PROFILE="OpenRec" \
+OPENREC_NOTARIZE=1 \
+scripts/package-release.sh
+```
 
 GitHub Actions release signing secrets:
 

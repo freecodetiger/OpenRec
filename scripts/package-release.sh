@@ -165,8 +165,14 @@ sign_app() {
     if [ -n "${OPENREC_SIGN_IDENTITY:-}" ]; then
         echo "Signing: Developer ID"
         set -- codesign --force --deep --options runtime --timestamp --sign "$OPENREC_SIGN_IDENTITY"
-        if [ -n "${OPENREC_ENTITLEMENTS:-}" ]; then
-            set -- "$@" --entitlements "$OPENREC_ENTITLEMENTS"
+        # Hardened runtime gates audio input behind this entitlement, so a Developer ID
+        # build without it records microphone audio as silence.
+        entitlements_path="${OPENREC_ENTITLEMENTS:-$ROOT_DIR/scripts/OpenRec.entitlements}"
+        if [ -f "$entitlements_path" ]; then
+            set -- "$@" --entitlements "$entitlements_path"
+        elif [ -n "${OPENREC_ENTITLEMENTS:-}" ]; then
+            echo "OPENREC_ENTITLEMENTS does not exist: $OPENREC_ENTITLEMENTS" >&2
+            exit 1
         fi
         run_cmd "$@" "$APP_PATH"
         return
@@ -217,21 +223,62 @@ notarize_and_staple() {
 
     echo "Notarization: submit --wait"
     create_app_zip "$APP_PATH" "$notary_zip_path"
+    notary_submit "$notary_zip_path"
 
+    echo "Staple: app"
+    run_cmd xcrun stapler staple "$APP_PATH"
+}
+
+notary_submit() {
     if [ -n "${OPENREC_NOTARY_PROFILE:-}" ]; then
-        run_cmd xcrun notarytool submit "$notary_zip_path" \
+        run_cmd xcrun notarytool submit "$1" \
             --keychain-profile "$OPENREC_NOTARY_PROFILE" \
             --wait
     else
-        run_cmd xcrun notarytool submit "$notary_zip_path" \
+        run_cmd xcrun notarytool submit "$1" \
             --apple-id "$OPENREC_NOTARY_APPLE_ID" \
             --team-id "$OPENREC_NOTARY_TEAM_ID" \
             --password "$OPENREC_NOTARY_PASSWORD" \
             --wait
     fi
+}
 
-    echo "Staple: app"
-    run_cmd xcrun stapler staple "$APP_PATH"
+create_dmg() {
+    dmg_path="$1"
+    rm -rf "$DMG_STAGING_DIR" "$dmg_path"
+    mkdir -p "$DMG_STAGING_DIR"
+    ditto "$APP_PATH" "$DMG_STAGING_DIR/OpenRec.app"
+    ln -s /Applications "$DMG_STAGING_DIR/Applications"
+
+    run_cmd hdiutil create \
+        -volname "OpenRec" \
+        -srcfolder "$DMG_STAGING_DIR" \
+        -ov \
+        -format UDZO \
+        "$dmg_path"
+
+    rm -rf "$DMG_STAGING_DIR"
+    echo "Created $dmg_path"
+}
+
+sign_dmg() {
+    if [ -z "${OPENREC_SIGN_IDENTITY:-}" ]; then
+        return
+    fi
+
+    run_cmd codesign --force --timestamp --sign "$OPENREC_SIGN_IDENTITY" "$1"
+}
+
+notarize_dmg() {
+    if [ -z "${OPENREC_SIGN_IDENTITY:-}" ] || ! notary_credentials_available; then
+        return
+    fi
+
+    echo "Notarization: submit --wait"
+    notary_submit "$1"
+
+    echo "Staple: dmg"
+    run_cmd xcrun stapler staple "$1"
 }
 
 VERSION="$(version_ref)"
@@ -240,9 +287,13 @@ SOURCE_ARCHIVE_DIR="$DIST_DIR/OpenRec-$ARTIFACT_VERSION"
 SOURCE_ZIP_PATH="$DIST_DIR/OpenRec-$ARTIFACT_VERSION.zip"
 MACOS_ZIP_PATH="$DIST_DIR/OpenRec-$ARTIFACT_VERSION-macos.zip"
 NOTARY_ZIP_PATH="$DIST_DIR/OpenRec-$ARTIFACT_VERSION-notary.zip"
+DMG_PATH="$DIST_DIR/OpenRec-$ARTIFACT_VERSION.dmg"
+DMG_STAGING_DIR="$DIST_DIR/dmg-staging"
 
 mkdir -p "$DIST_DIR"
 rm -f "$MACOS_ZIP_PATH" "$MACOS_ZIP_PATH.sha256" "$NOTARY_ZIP_PATH"
+rm -f "$DMG_PATH" "$DMG_PATH.sha256"
+rm -rf "$DMG_STAGING_DIR"
 
 if [ "${OPENREC_PACKAGE_SOURCE_ZIP:-1}" = "1" ]; then
     create_source_zip "$SOURCE_ARCHIVE_DIR" "$SOURCE_ZIP_PATH"
@@ -256,3 +307,13 @@ create_app_zip "$APP_PATH" "$MACOS_ZIP_PATH"
 rm -f "$NOTARY_ZIP_PATH"
 echo "Created $MACOS_ZIP_PATH"
 create_checksum "$MACOS_ZIP_PATH"
+
+if [ "${OPENREC_PACKAGE_DMG:-0}" = "1" ]; then
+    create_dmg "$DMG_PATH"
+    sign_dmg "$DMG_PATH"
+    notarize_dmg "$DMG_PATH"
+    # Dry runs print the hdiutil command instead of running it, so no DMG to hash.
+    if [ -f "$DMG_PATH" ]; then
+        create_checksum "$DMG_PATH"
+    fi
+fi

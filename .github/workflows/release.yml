@@ -161,6 +161,7 @@ jobs:
           OPENREC_NOTARY_APPLE_ID: ${{ secrets.OPENREC_NOTARY_APPLE_ID }}
           OPENREC_NOTARY_TEAM_ID: ${{ secrets.OPENREC_NOTARY_TEAM_ID }}
           OPENREC_NOTARY_PASSWORD: ${{ secrets.OPENREC_NOTARY_PASSWORD }}
+          OPENREC_PACKAGE_DMG: "1"
           OPENREC_AD_HOC_SIGN: "1"
           REQUIRE_NOTARIZATION: ${{ github.event_name == 'workflow_dispatch' && inputs.require_notarization || false }}
         run: |
@@ -184,13 +185,18 @@ jobs:
           version="${{ steps.version.outputs.artifact_version }}"
           source_zip="dist/OpenRec-$version.zip"
           app_zip="dist/OpenRec-$version-macos.zip"
+          dmg="dist/OpenRec-$version.dmg"
 
           test -f "$source_zip"
           test -f "$source_zip.sha256"
           test -f "$app_zip"
           test -f "$app_zip.sha256"
+          test -f "$dmg"
+          test -f "$dmg.sha256"
           shasum -a 256 -c "$source_zip.sha256"
           shasum -a 256 -c "$app_zip.sha256"
+          shasum -a 256 -c "$dmg.sha256"
+          hdiutil verify "$dmg"
 
           scripts/test-release-artifact.sh "$source_zip"
 
@@ -203,6 +209,19 @@ jobs:
           if [ -n "${OPENREC_SIGN_IDENTITY:-}" ]; then
             spctl -a -vv -t exec "$app_dir/OpenRec.app"
             xcrun stapler validate "$app_dir/OpenRec.app"
+            spctl -a -t open --context context:primary-signature -v "$dmg"
+            xcrun stapler validate "$dmg"
+
+            # Gatekeeper only ever sees the app as it arrives inside the disk image,
+            # so verify the mounted copy rather than the build directory one.
+            mount_point="$(hdiutil attach -nobrowse -readonly "$dmg" | tail -1 | sed 's/.*\(\/Volumes\/.*\)/\1/')"
+            spctl -a -vv -t exec "$mount_point/OpenRec.app"
+            xcrun stapler validate "$mount_point/OpenRec.app"
+            if [ ! -L "$mount_point/Applications" ]; then
+              echo "DMG must contain an /Applications symlink" >&2
+              exit 1
+            fi
+            hdiutil detach "$mount_point"
           fi
 
       - name: Write release notes
@@ -215,12 +234,14 @@ jobs:
           version="${{ steps.version.outputs.version }}"
           artifact_version="${{ steps.version.outputs.artifact_version }}"
           app_artifact="OpenRec-$artifact_version-macos.zip"
+          dmg_artifact="OpenRec-$artifact_version.dmg"
           source_artifact="OpenRec-$artifact_version.zip"
 
           {
             printf '# OpenRec %s\n\n' "$version"
-            printf 'OpenRec %s is the first formal release of the local macOS screen recorder.\n\n' "$version"
+            printf 'OpenRec %s is a release of the local macOS screen recorder.\n\n' "$version"
             printf 'Artifacts:\n'
+            printf -- '- `%s`: disk image with the app and an `/Applications` shortcut. Recommended download.\n' "$dmg_artifact"
             printf -- '- `%s`: packaged macOS app bundle.\n' "$app_artifact"
             printf -- '- `%s`: source archive for the tagged commit.\n' "$source_artifact"
             printf -- '- `*.sha256`: SHA-256 checksums for artifact verification.\n\n'
@@ -246,6 +267,8 @@ jobs:
             "dist/OpenRec-$artifact_version.zip.sha256"
             "dist/OpenRec-$artifact_version-macos.zip"
             "dist/OpenRec-$artifact_version-macos.zip.sha256"
+            "dist/OpenRec-$artifact_version.dmg"
+            "dist/OpenRec-$artifact_version.dmg.sha256"
           )
 
           if gh release view "$version" >/dev/null 2>&1; then
